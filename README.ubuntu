@@ -1,0 +1,14 @@
+
+NOTES
+-----
+
+- Needed to add universe to allow all extra packages to install
+- keyrings; 
+  in keys_ubuntu:
+  trusty-ubuntu-archive-keyring.gpg -> ubuntu-archive-keyring.gpg
+  -rw-r--r-- 1 user user 12335 Nov  9 16:18 ubuntu-archive-keyring.gpg
+  -rw-r--r-- 1 user user  1227 Nov  9 16:18 ubuntu-master-keyring.gpg
+- Do a dpkg --configure-all or whatever it is on first boot cause there
+  are packages not configured.
+
+
