@@ -12,3 +12,16 @@ NOTES
   are packages not configured.
 
 
+- These are the packages utopic installed when installing systemd-services.  They are renamed it back to systemd
+    Note, selecting 'systemd' instead of 'systemd-services'
+    The following extra packages will be installed:
+      acl cgmanager dbus libapparmor1 libcap-ng0 libcryptsetup4 libglib2.0-0 libglib2.0-data libpam-systemd
+      libsystemd-daemon0 libsystemd-login0 libwrap0 libxml2 sgml-base shared-mime-info systemd-shim tcpd xdg-user-dirs
+      xml-core
+    Suggested packages:
+      dbus-x11 sgml-base-doc systemd-ui pm-utils debhelper
+    The following NEW packages will be installed:
+      acl cgmanager dbus libapparmor1 libcap-ng0 libcryptsetup4 libglib2.0-0 libglib2.0-data libpam-systemd
+      libsystemd-daemon0 libsystemd-login0 libwrap0 libxml2 sgml-base shared-mime-info systemd systemd-shim tcpd
+      xdg-user-dirs xml-core
+
