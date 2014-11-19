@@ -40,10 +40,6 @@ BACKEND_VMM ?= xen
 BUILDERCONF ?= builder.conf
 KEYRING_DIR_GIT ?= $(PWD)/keyrings/git
 
-
-#Include config file
--include $(BUILDERCONF)
-
 # checking for make from Makefile is pointless
 DEPENDENCIES ?= git rpmdevtools rpm-build createrepo #make
 
@@ -64,6 +60,9 @@ GIT_REPOS := $(addprefix $(SRC_DIR)/,$(filter-out qubes-builder,$(COMPONENTS)))
 ifneq (,$(findstring qubes-builder,$(COMPONENTS)))
 GIT_REPOS += .
 endif
+
+#Include config file
+-include $(BUILDERCONF)
 
 .EXPORT_ALL_VARIABLES:
 .ONESHELL:
