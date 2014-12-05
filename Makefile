@@ -1,5 +1,5 @@
 # Set defaults
-GIT_SUBDIR ?= mainstream
+GIT_SUBDIR ?=
 BRANCH ?= master
 GIT_BASEURL ?= git://git.qubes-os.org
 GIT_SUFFIX ?= .git
@@ -7,32 +7,9 @@ DIST_DOM0 ?= fc20
 DISTS_VM ?= fc20
 VERBOSE ?= 0
 # Beware of build order
-COMPONENTS ?= vmm-xen \
-			  core-vchan-xen \
-			  linux-utils \
-			  qubes-app-linux-img-converter \
-			  core-admin \
-			  core-admin-linux \
-			  core-agent-linux \
-			  linux-kernel \
-			  artwork \
-			  gui-common \
-			  gui-daemon \
-			  gui-agent-linux \
-			  gui-agent-xen-hvm-stubdom \
-			  qubes-app-linux-split-gpg \
-			  qubes-app-linux-tor \
-			  qubes-app-thunderbird \
-			  qubes-app-linux-pdf-converter \
-			  linux-template-builder \
-			  desktop-linux-kde \
-			  desktop-linux-xfce4 \
-			  qubes-manager \
-			  installer-qubes-os \
-			  linux-yum \
-			  vmm-xen-windows-pvdrivers \
-			  antievilmaid \
-			  qubes-builder
+
+COMPONENTS ?= qubes-builder
+
 
 LINUX_REPO_BASEDIR ?= $(SRC_DIR)/linux-yum/current-release
 INSTALLER_COMPONENT ?= installer-qubes-os
@@ -325,7 +302,7 @@ check:
 	done; \
 	HEADER_PRINTED="" ; for REPO in $(GIT_REPOS); do \
 		pushd $$REPO > /dev/null; \
-		git tag --contains HEAD | grep ^. > /dev/null; \
+		git tag --points-at HEAD | grep ^. > /dev/null; \
 		if [ $$? -ne 0 ]; then \
 			if [ X$$HEADER_PRINTED == X ]; then HEADER_PRINTED="1"; echo "Unsigned HEADs in:"; fi; \
 			echo "> $$REPO"; fi; \
@@ -377,7 +354,11 @@ push:
 	@HEADER_PRINTED="" ; for REPO in $(GIT_REPOS); do \
 		pushd $$REPO > /dev/null; \
 		BRANCH=$(BRANCH); \
-		branch_var="BRANCH_`basename $${REPO//-/_}`"; \
+		if [ "$$REPO" == "." ]; then
+			branch_var="BRANCH_qubes_builder"; \
+		else \
+			branch_var="BRANCH_`basename $${REPO//-/_}`"; \
+		fi; \
 		[ -n "$${!branch_var}" ] && BRANCH="$${!branch_var}"; \
 		PUSH_REMOTE=`git config branch.$$BRANCH.remote`; \
 		[ -n "$(GIT_REMOTE)" ] && PUSH_REMOTE="$(GIT_REMOTE)"; \
