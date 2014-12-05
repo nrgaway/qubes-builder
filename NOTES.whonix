@@ -9,6 +9,8 @@
                           Whonix Checks and Issues
 ---------------------------------------------------------------------------------
 Current issues:
+  - Whonix notifications seems to have reverted back to old style
+
   - Need a utility to search for files with IP address pattern during installation.
     Currently the list is manually generated
     - Make sure Whonix provides a trigger
