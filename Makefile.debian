@@ -55,7 +55,7 @@ export DEBIANVERSION
 
 ### Local variables
 RUN_AS_USER = user
-
+REPO_CHROOT_DIR ?= chroot-jessie
 
 DEBIAN_DEPENDENCIES := dpkg-dev debootstrap
 
@@ -136,11 +136,15 @@ ifndef PACKAGE
 	$(error "PACKAGE need to be set!")
 endif
 	rm -f $(CHROOT_DIR)/$(DIST_SRC)/../$(packagefile)*
-	rm -f $(CHROOT_DIR)/$(DIST_SRC)/deb/*/*
-	rm -f $(CHROOT_DIR)/$(DIST_SRC)/rpm/*/*
+	rm -rf $(CHROOT_DIR)/$(DIST_SRC)/deb/*
+	rm -rf $(CHROOT_DIR)/$(DIST_SRC)/rpm/*
+	rm -rf $(CHROOT_DIR)/$(DIST_SRC)/pkgs/*
 	cd $(CHROOT_DIR)/$(DIST_SRC); $(PWD)/scripts-debian/debian-changelog.sh
+	# Break the hardlink
+	cp $(CHROOT_DIR)/$(DIST_SRC)/debian/changelog $(CHROOT_DIR)/$(DIST_SRC)/debian/changelog.copy
+	mv $(CHROOT_DIR)/$(DIST_SRC)/debian/changelog.copy $(CHROOT_DIR)/$(DIST_SRC)/debian/changelog
 	echo "Building package in $(DIST_SRC)"
-	sudo $(CHROOT_ENV) chroot $(CHROOT_DIR) su $(RUN_AS_USER) -c 'cd $(DIST_SRC); LC_ALL=C dpkg-buildpackage -sa -k${SIGN_KEY} --changes-option=-DDistribution=$(DIST)'
+	sudo $(CHROOT_ENV) chroot $(CHROOT_DIR) su $(RUN_AS_USER) -c 'cd $(DIST_SRC); export LC_ALL=C; debchange -l$(DIST) "Build for $(DIST)"; debchange --force-distribution -r -D $(DIST) $(DIST); dpkg-buildpackage -sa -k${SIGN_KEY}'
 
 dist-copy-out:
 	mkdir -p $(BUILDER_REPO_DIR)/deb
@@ -162,23 +166,19 @@ else
 	@mkdir -p $(UPDATE_REPO)/conf
 	[ ! -e $(UPDATE_REPO)/conf/distributions ] && echo "$$aptdistributions" > $(UPDATE_REPO)/conf/distributions || :
 
-	if ! [ -d $(CHROOT_DIR)/tmp/qubes-deb/deb ]; then \
-		mkdir -p $(CHROOT_DIR)/tmp/qubes-deb ;\
-		sudo mount --bind $(BUILDER_REPO_DIR) $(CHROOT_DIR)/tmp/qubes-deb ;\
+	-sudo umount $(REPO_CHROOT_DIR)/tmp/qubes-apt-repo $(REPO_CHROOT_DIR)/tmp/qubes-deb 2>/dev/null
+	if ! [ -d $(REPO_CHROOT_DIR)/tmp/qubes-deb/deb ]; then \
+		mkdir -p $(REPO_CHROOT_DIR)/tmp/qubes-deb ;\
+		sudo mount --bind $(BUILDER_REPO_DIR) $(REPO_CHROOT_DIR)/tmp/qubes-deb ;\
 	fi
 
-	if ! [ -d $(CHROOT_DIR)/tmp/qubes-apt-repo/dists ]; then \
-		mkdir -p $(CHROOT_DIR)/tmp/qubes-apt-repo ;\
-		sudo mount --bind $(UPDATE_REPO) $(CHROOT_DIR)/tmp/qubes-apt-repo ;\
+	if ! [ -d $(REPO_CHROOT_DIR)/tmp/qubes-apt-repo/dists ]; then \
+		mkdir -p $(REPO_CHROOT_DIR)/tmp/qubes-apt-repo ;\
+		sudo mount --bind $(UPDATE_REPO) $(REPO_CHROOT_DIR)/tmp/qubes-apt-repo ;\
 	fi
 
-	# Add --ignore=wrongdistribution for wheezy
-	if [ "$(DEBIANVERSION)" == "wheezy" ]; then \
-		sudo $(CHROOT_ENV) chroot $(CHROOT_DIR) su $(RUN_AS_USER) -c "reprepro --ignore=wrongdistribution -b /tmp/qubes-apt-repo include $(DEBIANVERSION)$(REPO_SUFFIX) /tmp/qubes-deb/deb/$(packagefile)_amd64.changes" ;\
-	else \
-		sudo $(CHROOT_ENV) chroot $(CHROOT_DIR) su $(RUN_AS_USER) -c "reprepro -b /tmp/qubes-apt-repo include $(DEBIANVERSION)$(REPO_SUFFIX) /tmp/qubes-deb/deb/$(packagefile)_amd64.changes" ;\
-	fi
-	sudo umount $(CHROOT_DIR)/tmp/qubes-apt-repo
-	sudo umount $(CHROOT_DIR)/tmp/qubes-deb
+	sudo $(CHROOT_ENV) chroot $(REPO_CHROOT_DIR) su $(RUN_AS_USER) -c "reprepro -b /tmp/qubes-apt-repo include $(DEBIANVERSION)$(REPO_SUFFIX) /tmp/qubes-deb/deb/$(packagefile)$(DIST)1_amd64.changes"
+	sudo umount $(REPO_CHROOT_DIR)/tmp/qubes-apt-repo
+	sudo umount $(REPO_CHROOT_DIR)/tmp/qubes-deb
 endif
 
