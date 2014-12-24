@@ -269,6 +269,9 @@ function checkKeys() {
             echo "${text}"
             exit 1
         fi
+
+        # Add developers keys
+        gpg --import qubes-developers-keys.asc 
     done
 }
 
