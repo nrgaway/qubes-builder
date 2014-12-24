@@ -1,6 +1,7 @@
 chroot-*
 qubes-src
 builder*.conf
+setup*.conf
 rpm/
 keyrings/
 mnt_archlinux_dvd/
