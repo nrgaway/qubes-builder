@@ -355,8 +355,8 @@ EOF
     info
 }
 
-function finsih() {
-    cat >> "${CONF_FILE}" <<EOF
+function finish() {
+read -r -d '' LAST_WORDS <<'EOF' || true
 
 Build Steps
 -----------
@@ -365,7 +365,7 @@ make template-modules
 make template
 EOF
 
-    info "${text}"
+info "${LAST_WORDS}"
 }
 
 
@@ -382,3 +382,4 @@ writeConfiguration ${DISTS[@]}
 
 clear
 summary
+finish
