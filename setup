@@ -5,8 +5,8 @@ CONF_MASTER=./example-configs/ubuntu.conf
 CONF_FILE=./setup.conf
 CONF_OLD_FILE=./setup-old.conf
 
-#DIALOG=/usr/bin/dialog
-DIALOG=/usr/bin/whiptail
+DIALOG=/usr/bin/dialog
+#DIALOG=/usr/bin/whiptail
 
 
 # ------------------------------------------------------------------------------
