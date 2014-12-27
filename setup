@@ -24,6 +24,7 @@ if [ -f "${CONF_FILE}" ]; then
 fi
 
 DISTS_VM=($(make -B get-vms))
+ABOUT=($(make -B about))
 
 if [ -f "${CONF_OLD_FILE}" ]; then
     SELECTED_DISTS_VM=($(BUILDERCONF="${CONF_OLD_FILE}" make -B get-vms))
@@ -324,6 +325,10 @@ function writeConfiguration() {
 # Summary
 # ------------------------------------------------------------------------------
 function summary() {
+
+echo -e "\n#\n# Master Configuration File: ${ABOUT[@]}\n#" >> "${CONF_FILE}"
+
+if ! elementIn "nrgaway.conf" ${ABOUT[@]}; then
     # Over-write my personal git links with https
     cat >> "${CONF_FILE}" <<'EOF'
 
@@ -344,7 +349,11 @@ BRANCH_linux_template_builder = ubuntu
 # upstream still missing 'appvm-scripts/usrbin/qubes-session' commit
 GIT_URL_gui_agent_linux = https://github.com/nrgaway/gui-agent-linux.git
 BRANCH_gui_agent_linux = debian
+EOF
 
+fi
+
+    cat >> "${CONF_FILE}" <<'EOF'
 .PHONY: get-vms
 get-vms::
 	@echo $(DISTS_VM)
