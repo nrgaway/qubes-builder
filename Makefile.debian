@@ -55,7 +55,7 @@ export DEBIANVERSION
 
 ### Local variables
 RUN_AS_USER = user
-REPO_CHROOT_DIR ?= chroot-jessie
+REPO_CHROOT_DIR ?= chroot-debian
 
 DEBIAN_DEPENDENCIES := dpkg-dev debootstrap
 
@@ -167,6 +167,11 @@ else
 	[ ! -e $(UPDATE_REPO)/conf/distributions ] && echo "$$aptdistributions" > $(UPDATE_REPO)/conf/distributions || :
 
 	-sudo umount $(REPO_CHROOT_DIR)/tmp/qubes-apt-repo $(REPO_CHROOT_DIR)/tmp/qubes-deb 2>/dev/null
+	if ! [ -L $(REPO_CHROOT_DIR) ]; then \
+	    rm -rf ${REPO_CHROOT_DIR}; \
+	    ln -sf chroot-${DIST} ${REPO_CHROOT_DIR}; \
+	fi
+
 	if ! [ -d $(REPO_CHROOT_DIR)/tmp/qubes-deb/deb ]; then \
 		mkdir -p $(REPO_CHROOT_DIR)/tmp/qubes-deb ;\
 		sudo mount --bind $(BUILDER_REPO_DIR) $(REPO_CHROOT_DIR)/tmp/qubes-deb ;\
