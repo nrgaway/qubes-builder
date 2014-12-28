@@ -1,12 +1,11 @@
 #!/bin/bash +e
 # vim: set ts=4 sw=4 sts=4 et :
 
-CONF_MASTER=./example-configs/ubuntu.conf
+CONF_MASTER=./example-configs/nrgaway.conf
 CONF_FILE=./setup.conf
 CONF_OLD_FILE=./setup-old.conf
 
 DIALOG=/usr/bin/dialog
-#DIALOG=/usr/bin/whiptail
 
 
 # ------------------------------------------------------------------------------
@@ -166,28 +165,15 @@ function installDialog() {
     fi
 }
 
-function message_yesno() {
-    local message="${1}"
-    local title="${2-"Message"}"
-
-    dialog --title "${title}" --yesno "${message}" 8 60
-    return $?
-}
-
-function message_ok() {
-    local message="${1}"
-    local title="${2-"Message"}"
-
-    dialog --title "${title}" --infobox "${message}" 8 60
-    return $?
-}
-
 
 # ------------------------------------------------------------------------------
-# Welcome
+# sshAccess
 # ------------------------------------------------------------------------------
-function welcome() {
-    true
+function sshAccess() {
+    title="Enable SSH Access"
+    message="Do you have ssh access to the repos?\n\nSelect 'Yes' to configure urls to match git or 'No' for https" 
+    dialog --default-button no --title "${title}" --yesno "${message}" 8 60
+        return $?
 }
 
 
@@ -253,7 +239,9 @@ function checkKeys() {
         # Check if key exists
         text="$(gpgListKey ${key[key]})"
         if [ $? != "0" ]; then
-            message_yesno "${key[owner]} key does not exist.\n\nSelect 'Yes' to add or 'No' to exit"
+            title="Add Keys"
+            message="${key[owner]} key does not exist.\n\nSelect 'Yes' to add or 'No' to exit"
+            dialog --default-button yes --title "${title}" --yesno "${message}" 8 60
                 if [ $? != "0" ]; then
                     exit 1
                 else
@@ -264,8 +252,9 @@ function checkKeys() {
         # Verify key
         text="$(gpgVerifyKey ${key[key]})"
         if [ $? != "0" ]; then
-            message_ok "\nWrong fingerprint:\n${key[fingerprint]}\n\nExiting!" \
-                       "${key[owner]} fingerprint failed!"
+            title="${key[owner]} fingerprint failed!"
+            message="\nWrong fingerprint:\n${key[fingerprint]}\n\nExiting!"
+            dialog --title "${title}" --infobox "${message}" 8 60
             echo
             echo "${text}"
             exit 1
@@ -324,34 +313,27 @@ function writeConfiguration() {
 # ------------------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------------------
+function comment() {
+
+    echo -e "\n#" >> "${CONF_FILE}"
+    for line in "$@"; do
+        echo -e "# ${line}" >> "${CONF_FILE}"
+    done
+    echo -e "#" >> "${CONF_FILE}"
+
+}
 function summary() {
 
-echo -e "\n#\n# Master Configuration File: ${ABOUT[@]}\n#" >> "${CONF_FILE}"
+    about="${ABOUT[@]}"
+    comment "Master Configuration File(s):" "${about}"
 
-if ! elementIn "nrgaway.conf" ${ABOUT[@]}; then
-    # Over-write my personal git links with https
-    cat >> "${CONF_FILE}" <<'EOF'
+    comment "Set SSH_ACCESS to 1 if you can connect to repo via git@ otherwise" \
+            "set to 0 for https:// access"
+    echo -e "SSH_ACCESS := ${SSH_ACCESS}" >> "${CONF_FILE}"
 
-# Personal qubes-builder repo
-GIT_URL_qubes_builder = https://github.com/nrgaway/qubes-builder.git
-BRANCH_qubes_builder = ubuntu
-
-# Personal linux-template-builder repo
-GIT_URL_linux_template_builder = https://github.com/nrgaway/linux-template-builder.git
-BRANCH_linux_template_builder = ubuntu
-
-# Personal core-agent-linux repo
-# GIT_URL_core_agent_linux = https://github.com/nrgaway/core-agent-linux.git
-# BRANCH_core_agent_linux = debian
-
-# Personal gui-agent-linux repo
-# git diff debian..upstream/release2
-# upstream still missing 'appvm-scripts/usrbin/qubes-session' commit
-GIT_URL_gui_agent_linux = https://github.com/nrgaway/gui-agent-linux.git
-BRANCH_gui_agent_linux = debian
-EOF
-
-fi
+    comment "Only build templates (comment out to build all of Qubes"
+    echo -e 'COMPONENTS := $(TEMPLATE)' >> "${CONF_FILE}"
+    echo -e 'DIST_DOM0 :=\n' >> "${CONF_FILE}"
 
     cat >> "${CONF_FILE}" <<'EOF'
 .PHONY: get-vms
@@ -386,7 +368,7 @@ info "${LAST_WORDS}"
 # ------------------------------------------------------------------------------
 clear
 installDialog
-welcome
+sshAccess && SSH_ACCESS=1 || SSH_ACCESS=0
 checkKeys
 chooseDists DISTS
 
