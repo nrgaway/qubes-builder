@@ -167,12 +167,23 @@ function installDialog() {
 
 
 # ------------------------------------------------------------------------------
-# sshAccess
+# sshAccessDialog
 # ------------------------------------------------------------------------------
-function sshAccess() {
+function sshAccessDialog() {
     title="Enable SSH Access"
     message="Do you have ssh access to the repos?\n\nSelect 'Yes' to configure urls to match git or 'No' for https" 
     dialog --default-button no --title "${title}" --yesno "${message}" 8 60
+        return $?
+}
+
+
+# ------------------------------------------------------------------------------
+# templateOnlyDialog
+# ------------------------------------------------------------------------------
+function templateOnlyDialog() {
+    title="Build Template Only?"
+    message="Would you like to build only the templates?\n\nSelect 'Yes' to to only build templates or 'No' for complete build" 
+    dialog --default-button yes --title "${title}" --yesno "${message}" 8 60
         return $?
 }
 
@@ -269,7 +280,7 @@ function checkKeys() {
 # ------------------------------------------------------------------------------
 # Display VM's for selction
 # ------------------------------------------------------------------------------
-function chooseDists() {
+function chooseDistsDialog() {
     return_global_var=${1}
 
     counter=1
@@ -322,6 +333,7 @@ function comment() {
     echo -e "#" >> "${CONF_FILE}"
 
 }
+
 function summary() {
 
     about="${ABOUT[@]}"
@@ -331,9 +343,11 @@ function summary() {
             "set to 0 for https:// access"
     echo -e "SSH_ACCESS := ${SSH_ACCESS}" >> "${CONF_FILE}"
 
-    comment "Only build templates (comment out to build all of Qubes"
-    echo -e 'COMPONENTS := $(TEMPLATE)' >> "${CONF_FILE}"
-    echo -e 'DIST_DOM0 :=\n' >> "${CONF_FILE}"
+    if [ "${TEMPLATE}" == "1" ]; then
+        comment "Only build templates (comment out to build all of Qubes)"
+        echo -e 'COMPONENTS := $(TEMPLATE)' >> "${CONF_FILE}"
+        echo -e 'DIST_DOM0 :=\n' >> "${CONF_FILE}"
+    fi
 
     cat >> "${CONF_FILE}" <<'EOF'
 .PHONY: get-vms
@@ -368,9 +382,10 @@ info "${LAST_WORDS}"
 # ------------------------------------------------------------------------------
 clear
 installDialog
-sshAccess && SSH_ACCESS=1 || SSH_ACCESS=0
+sshAccessDialog && SSH_ACCESS=1 || SSH_ACCESS=0
+templateOnlyDialog && TEMPLATE=1 || TEMPLATE=0
 checkKeys
-chooseDists DISTS
+chooseDistsDialog DISTS
 
 writeConfiguration ${DISTS[@]}
 
