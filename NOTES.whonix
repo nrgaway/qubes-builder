@@ -11,12 +11,17 @@
 Current issues:
   - Whonix notifications seems to have reverted back to old style
 
+  - /etc/profile.d/20_power_savings_disable_in_vms.sh prevents qvm-run from
+    operating within dom0.  Think Patrick will fix on his end.  I suggested
+    redirecting the error output to /dev/null for the setterm commands
+
   - Need a utility to search for files with IP address pattern during installation.
     Currently the list is manually generated
     - Make sure Whonix provides a trigger
 
 Build issues:
   - None
+  - To build whonix-qubes package in Fedora, install pbuilder as a depend
 
 
 ---------------------------------------------------------------------------------
