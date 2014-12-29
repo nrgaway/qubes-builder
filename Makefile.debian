@@ -144,6 +144,13 @@ endif
 	cp $(CHROOT_DIR)/$(DIST_SRC)/debian/changelog $(CHROOT_DIR)/$(DIST_SRC)/debian/changelog.copy
 	mv $(CHROOT_DIR)/$(DIST_SRC)/debian/changelog.copy $(CHROOT_DIR)/$(DIST_SRC)/debian/changelog
 	echo "Building package in $(DIST_SRC)"
+	# Hook to see if Makefile has a 'dist' target so it can be run to allow 
+	# "3.0 (quilt) formats to work (will grab remote source package) or create
+	# a local one based on repo
+	echo "make -n -s -C $(SRC_DIR)/$(COMPONENT) dist 2> /dev/null" ;  \
+	if [ -n "`make -n -s -C $(SRC_DIR)/$(COMPONENT) dist 2> /dev/null`" ]; then \
+	    sudo $(CHROOT_ENV) chroot $(CHROOT_DIR) su $(RUN_AS_USER) -c 'cd $(DIST_SRC); export LC_ALL=C; make -s dist'; \
+	fi; \
 	sudo $(CHROOT_ENV) chroot $(CHROOT_DIR) su $(RUN_AS_USER) -c 'cd $(DIST_SRC); export LC_ALL=C; debchange -l$(DIST) "Build for $(DIST)"; debchange --force-distribution -r -D $(DIST) $(DIST); dpkg-buildpackage -sa -k${SIGN_KEY}'
 
 dist-copy-out:
