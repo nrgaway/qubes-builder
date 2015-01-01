@@ -329,13 +329,20 @@ summary() {
             "builder.conf linked to:" "${CONF_MASTER_DIR}/r${RELEASE}-${CONF_MASTER_FILE}"
 
     comment "Set SSH_ACCESS to 1 if you can connect to repo via git@ otherwise" \
-            "set to 0 for https:// access"
+            "set to 0 for https:// access."
     echo -e "SSH_ACCESS := ${SSH_ACCESS}" >> "${CONF_FILE}"
+
+
+    if [ "${DISABLE_OTHER_REPO}" == 'true' ]; then
+        comment "Found a disable target, most likely in custom.conf, therefore setting" \
+                "r${RELEASE}-nrgaway-repo.conf as disabled."
+        echo -e "DISABLE_OTHER_REPO := ${DISABLE_OTHER_REPO}" >> "${CONF_FILE}"
+    fi
 
     if [ "${TEMPLATE}" == "1" ]; then
         comment "Only build templates (comment out to build all of Qubes)"
         echo -e 'COMPONENTS := $(TEMPLATE)' >> "${CONF_FILE}"
-        echo -e 'DIST_DOM0 :=\n' >> "${CONF_FILE}"
+        echo -e 'DIST_DOM0 :=' >> "${CONF_FILE}"
     fi
 
     cat >> "${CONF_FILE}" <<'EOF'
@@ -354,16 +361,29 @@ EOF
 }
 
 instructions() {
-read -r -d '' LAST_WORDS <<'EOF' || true
+    # Qubes build info
+    if [ "${TEMPLATE}" != "1" ]; then
+        read -r -d '' BUILD_QUBES <<'EOF' || true
+Complete Qubes Build Steps
+--------------------------
+make get-sources
+make qubes
+make iso
+EOF
+    echo
+    info "${BUILD_QUBES}"
+    fi
 
-Build Steps
------------
+    # Template build info
+    read -r -d '' BUILD_TEMPLATES <<'EOF' || true
+Template Only Build Steps
+-------------------------
 make get-sources
 make template-modules
 make template
 EOF
-
-info "${LAST_WORDS}"
+    echo
+    info "${BUILD_TEMPLATES}"
 }
 
 
@@ -393,6 +413,7 @@ installDialog
 
     DISTS_VM=($(make -B get-vms))
     ABOUT=($(make -B about))
+    DISABLE_OTHER_REPO=($(make -B disable_other_repo))
 
     if [ -f "${CONF_FILE_OLD}" ]; then
         SELECTED_DISTS_VM=($(BUILDERCONF="${CONF_FILE_OLD}" make -B get-vms))
