@@ -464,7 +464,6 @@ installDialog
     BRANCH="$(git branch | sed -n -e 's/^\* \(.*\)/\1/p')"
     OVERRIDE_SOURCE="${SRC_DIR}/${PERSONAL_DIR}/r${RELEASE}-${BRANCH}.conf"
     OVERRIDE_TARGET="./override.conf"
-    echo "OVERRIDE_SOURCE: ${OVERRIDE_SOURCE}"
 
     if [ ! -d "${SRC_DIR}" ]; then
         NO_SRC_DIR="${SRC_DIR} does not yet exist.  You may want to re-run setup after getting sources to find other configuration files."
@@ -490,6 +489,10 @@ installDialog
         unset OVERRIDE_SOURCE
     fi
 
+    # If the overrides target exist, use it even if no other sources were used
+    if [[ -z "${OVERRIDE_SOURCE}" && -e "${OVERRIDE_TARGET}" ]]; then
+        OVERRIDE_SOURCE="${OVERRIDE_TARGET}"
+    fi
 
     #--------------------------------------------------------------------------
     #--------------------------------------------------------------------------
