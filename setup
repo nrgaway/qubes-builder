@@ -4,7 +4,7 @@
 CONF_MASTER_DIR=./example-configs
 CONF_MASTER_FILE=nrgaway.conf
 CONF_FILE=./setup.conf
-CONF_FILE_OLD=./setup-old.conf
+CONF_FILE_OLD=./setup.conf.old
 
 DIALOG=/usr/bin/dialog
 
@@ -106,6 +106,7 @@ setArrayAsGlobal() {
     eval ${replaced/declare -/declare -g}
 } 
 
+
 # ------------------------------------------------------------------------------
 # $1: element to check for
 # $2: array to check for element in
@@ -144,6 +145,7 @@ installDialog() {
     fi
 }
 
+
 # ------------------------------------------------------------------------------
 # useOverrideConfiguration
 # ------------------------------------------------------------------------------
@@ -153,6 +155,7 @@ useOverrideConfiguration() {
     dialog --default-button yes --title "${title}" --yesno "${message}" 12 60
     return $?
 }
+
 
 # ------------------------------------------------------------------------------
 # chooseVersion
@@ -164,13 +167,19 @@ chooseVersion() {
         return $?
 }
 
+
 # ------------------------------------------------------------------------------
 # sshAccessDialog
 # ------------------------------------------------------------------------------
 sshAccessDialog() {
+    if [ "${1}" == "1" ]; then
+        default="yes"
+    else
+        default="no"
+    fi
     title="Enable SSH Access"
     message="Do you have ssh access to the repos?\n\nSelect 'Yes' to configure urls to match git or 'No' for https" 
-    dialog --default-button no --title "${title}" --yesno "${message}" 8 60
+    dialog --default-button ${default} --title "${title}" --yesno "${message}" 8 60
         return $?
 }
 
@@ -179,9 +188,14 @@ sshAccessDialog() {
 # templateOnlyDialog
 # ------------------------------------------------------------------------------
 templateOnlyDialog() {
+    if [ "${1}" == "1" ]; then
+        default="yes"
+    else
+        default="no"
+    fi
     title="Build Template Only?"
     message="Would you like to build only the templates?\n\nSelect 'Yes' to to only build templates or 'No' for complete build" 
-    dialog --default-button yes --title "${title}" --yesno "${message}" 8 60
+    dialog --default-button ${default} --title "${title}" --yesno "${message}" 8 60
         return $?
 }
 
@@ -211,17 +225,20 @@ read -r -d '' KEYS[0x5A4C6DAD] <<'EOF' || true
 )
 EOF
 
+
 gpgListKey() {
     text="$(gpg --list-key $1)" && retval=0 || retval=1
     echo "${text}"
     return $retval
 }
 
+
 gpgRecvKeys() {
     text="$(gpg --recv-keys $1)" && retval=0 || retval=1
     echo "${text}"
     return $retval
 }
+
 
 gpgVerifyKey() {
     text="$(gpg --with-colons --fingerprint $1)" && retval=0 || retval=1
@@ -238,6 +255,7 @@ gpgVerifyKey() {
     echo "${text}"
     return $retval
 }
+
 
 checkKeys() {
     echo "Parsing keys..."
@@ -301,7 +319,7 @@ chooseDistsDialog() {
     for choice in $choices; do
         DISTS+=("${DISTS_VM[$[choice - 1]]}")
     done
-    
+
     setArrayAsGlobal DISTS $return_global_var
 }
 
@@ -331,6 +349,7 @@ comment() {
     echo -e "#" >> "${CONF_FILE}"
 
 }
+
 
 summary() {
     # About - General Information
@@ -380,6 +399,7 @@ summary() {
     #--------------------------------------------------------------------------
     if [ "${TEMPLATE}" == "1" ]; then
         comment "Only build templates (comment out to build all of Qubes)"
+        echo -e "TEMPLATE_ONLY := ${TEMPLATE}" >> "${CONF_FILE}"
         echo -e 'COMPONENTS := $(TEMPLATE)' >> "${CONF_FILE}"
         echo -e 'DIST_DOM0 :=' >> "${CONF_FILE}"
     fi
@@ -387,10 +407,6 @@ summary() {
     # Write the file
     #--------------------------------------------------------------------------
     cat >> "${CONF_FILE}" <<'EOF'
-
-.PHONY: get-vms
-get-vms::
-	@echo $(DISTS_VM)
 
 about::
 	@echo "setup.conf"
@@ -400,6 +416,7 @@ EOF
     debug "$(cat ${CONF_FILE})"
     info
 }
+
 
 instructions() {
     # Qubes build info
@@ -437,9 +454,16 @@ installDialog
 # Link proper config files based on Qubes release picked
 {
     #--------------------------------------------------------------------------
+    # Get variables from Makefile INCLDING setup.conf Makefile
+    #--------------------------------------------------------------------------
+    SSH_ACCESS="$(GET_VAR=SSH_ACCESS make get-var)"
+    TEMPLATE_ONLY="$(GET_VAR=TEMPLATE_ONLY make get-var)"
+    
+    #--------------------------------------------------------------------------
     # Move setup.conf out of the way if it exists 
     #--------------------------------------------------------------------------
     if [ -f "${CONF_FILE}" ]; then
+        SELECTED_DISTS_VM=( $(GET_VAR=DISTS_VM make get-var) )
         mv "${CONF_FILE}" "${CONF_FILE_OLD}"
     fi
 
@@ -495,25 +519,22 @@ installDialog
     fi
 
     #--------------------------------------------------------------------------
+    # Get variables from Makefile NOT INCLDING setup.conf Makefile
     #--------------------------------------------------------------------------
-    DISTS_VM=($(make -B get-vms))
+    DISTS_VM=( $(GET_VAR=DISTS_VM make get-var) )
     ABOUT=($(make -B about))
     DISABLE_OTHER_REPO=($(make -B disable_other_repo))
-
-    if [ -f "${CONF_FILE_OLD}" ]; then
-        SELECTED_DISTS_VM=($(BUILDERCONF="${CONF_FILE_OLD}" make -B get-vms))
-    fi
 }
 
 #------------------------------------------------------------------------------
 # Choose if user has git ssh (commit) or http access to private repos
 #------------------------------------------------------------------------------
-sshAccessDialog && SSH_ACCESS=1 || SSH_ACCESS=0
+sshAccessDialog ${SSH_ACCESS} && SSH_ACCESS=1 || SSH_ACCESS=0
 
 #------------------------------------------------------------------------------
 # Choose to build a complete system or templates only
 #------------------------------------------------------------------------------
-templateOnlyDialog && TEMPLATE=1 || TEMPLATE=0
+templateOnlyDialog ${TEMPLATE_ONLY} && TEMPLATE=1 || TEMPLATE=0
 
 #------------------------------------------------------------------------------
 # Verify signing keys and download and verify if required
