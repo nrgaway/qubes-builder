@@ -1,34 +1,12 @@
 #!/bin/bash +e
 # vim: set ts=4 sw=4 sts=4 et :
 
-CONF_MASTER=./example-configs/ubuntu.conf
+CONF_MASTER_DIR=./example-configs
+CONF_MASTER_FILE=nrgaway.conf
 CONF_FILE=./setup.conf
-CONF_OLD_FILE=./setup-old.conf
+CONF_FILE_OLD=./setup.conf.old
 
 DIALOG=/usr/bin/dialog
-#DIALOG=/usr/bin/whiptail
-
-
-# ------------------------------------------------------------------------------
-# Initial configurations
-# ------------------------------------------------------------------------------
-# Copy the examples/nrgaway.conf file to builder.conf
-if ! [ -f "builder.conf" ]; then
-    ln -fs "${CONF_MASTER}" builder.conf
-fi
-
-# Move setup.conf out of the way if it exists so we have access to 
-# main conf configurations
-if [ -f "${CONF_FILE}" ]; then
-    mv "${CONF_FILE}" "${CONF_OLD_FILE}"
-fi
-
-DISTS_VM=($(make -B get-vms))
-ABOUT=($(make -B about))
-
-if [ -f "${CONF_OLD_FILE}" ]; then
-    SELECTED_DISTS_VM=($(BUILDERCONF="${CONF_OLD_FILE}" make -B get-vms))
-fi
 
 
 # ------------------------------------------------------------------------------
@@ -128,6 +106,7 @@ setArrayAsGlobal() {
     eval ${replaced/declare -/declare -g}
 } 
 
+
 # ------------------------------------------------------------------------------
 # $1: element to check for
 # $2: array to check for element in
@@ -142,7 +121,7 @@ elementIn () {
 # ------------------------------------------------------------------------------
 # Install 'dialog' program if it does not yet exist
 # ------------------------------------------------------------------------------
-function installDialog() {
+installDialog() {
     if [ ! -f "$DIALOG" ]; then
         _dialog="${DIALOG##*/}"
         info "${red}${_dialog}${blue} is not installed and required for setup."
@@ -166,28 +145,58 @@ function installDialog() {
     fi
 }
 
-function message_yesno() {
-    local message="${1}"
-    local title="${2-"Message"}"
 
-    dialog --title "${title}" --yesno "${message}" 8 60
-    return $?
-}
-
-function message_ok() {
-    local message="${1}"
-    local title="${2-"Message"}"
-
-    dialog --title "${title}" --infobox "${message}" 8 60
+# ------------------------------------------------------------------------------
+# useOverrideConfiguration
+# ------------------------------------------------------------------------------
+useOverrideConfiguration() {
+    title="Use Branch Specific Configuration File?"
+    message="A  branch specific configuration file was found in your personal directory: ${OVERRIDE_SOURCE}.\n\nWould you like to use and override the other provided repos?"
+    dialog --default-button yes --title "${title}" --yesno "${message}" 12 60
     return $?
 }
 
 
 # ------------------------------------------------------------------------------
-# Welcome
+# chooseVersion
 # ------------------------------------------------------------------------------
-function welcome() {
-    true
+chooseVersion() {
+    title="Choose Qubes Version"
+    message="Choose which version of Qubes you wish to build.\n\nValid options are either the stable release 2 or development release 3 version." 
+    dialog --default-button yes --yes-label "Release 2" --no-label "Release 3" --title "${title}" --yesno "${message}" 8 60
+        return $?
+}
+
+
+# ------------------------------------------------------------------------------
+# sshAccessDialog
+# ------------------------------------------------------------------------------
+sshAccessDialog() {
+    if [ "${1}" == "1" ]; then
+        default="yes"
+    else
+        default="no"
+    fi
+    title="Enable SSH Access"
+    message="Do you have ssh access to the repos?\n\nSelect 'Yes' to configure urls to match git or 'No' for https" 
+    dialog --default-button ${default} --title "${title}" --yesno "${message}" 8 60
+        return $?
+}
+
+
+# ------------------------------------------------------------------------------
+# templateOnlyDialog
+# ------------------------------------------------------------------------------
+templateOnlyDialog() {
+    if [ "${1}" == "1" ]; then
+        default="yes"
+    else
+        default="no"
+    fi
+    title="Build Template Only?"
+    message="Would you like to build only the templates?\n\nSelect 'Yes' to to only build templates or 'No' for complete build" 
+    dialog --default-button ${default} --title "${title}" --yesno "${message}" 8 60
+        return $?
 }
 
 
@@ -216,19 +225,22 @@ read -r -d '' KEYS[0x5A4C6DAD] <<'EOF' || true
 )
 EOF
 
-function gpgListKey() {
+
+gpgListKey() {
     text="$(gpg --list-key $1)" && retval=0 || retval=1
     echo "${text}"
     return $retval
 }
 
-function gpgRecvKeys() {
+
+gpgRecvKeys() {
     text="$(gpg --recv-keys $1)" && retval=0 || retval=1
     echo "${text}"
     return $retval
 }
 
-function gpgVerifyKey() {
+
+gpgVerifyKey() {
     text="$(gpg --with-colons --fingerprint $1)" && retval=0 || retval=1
 
     while read -r line; do
@@ -244,7 +256,8 @@ function gpgVerifyKey() {
     return $retval
 }
 
-function checkKeys() {
+
+checkKeys() {
     echo "Parsing keys..."
     for key in "${!KEYS[@]}"; do
         eval "declare -A key="${KEYS[key]}
@@ -253,7 +266,9 @@ function checkKeys() {
         # Check if key exists
         text="$(gpgListKey ${key[key]})"
         if [ $? != "0" ]; then
-            message_yesno "${key[owner]} key does not exist.\n\nSelect 'Yes' to add or 'No' to exit"
+            title="Add Keys"
+            message="${key[owner]} key does not exist.\n\nSelect 'Yes' to add or 'No' to exit"
+            dialog --default-button yes --title "${title}" --yesno "${message}" 8 60
                 if [ $? != "0" ]; then
                     exit 1
                 else
@@ -264,8 +279,9 @@ function checkKeys() {
         # Verify key
         text="$(gpgVerifyKey ${key[key]})"
         if [ $? != "0" ]; then
-            message_ok "\nWrong fingerprint:\n${key[fingerprint]}\n\nExiting!" \
-                       "${key[owner]} fingerprint failed!"
+            title="${key[owner]} fingerprint failed!"
+            message="\nWrong fingerprint:\n${key[fingerprint]}\n\nExiting!"
+            dialog --title "${title}" --infobox "${message}" 8 60
             echo
             echo "${text}"
             exit 1
@@ -280,7 +296,7 @@ function checkKeys() {
 # ------------------------------------------------------------------------------
 # Display VM's for selction
 # ------------------------------------------------------------------------------
-function chooseDists() {
+chooseDistsDialog() {
     return_global_var=${1}
 
     counter=1
@@ -303,7 +319,7 @@ function chooseDists() {
     for choice in $choices; do
         DISTS+=("${DISTS_VM[$[choice - 1]]}")
     done
-    
+
     setArrayAsGlobal DISTS $return_global_var
 }
 
@@ -311,7 +327,7 @@ function chooseDists() {
 # ------------------------------------------------------------------------------
 # Write Configuration file
 # ------------------------------------------------------------------------------
-function writeConfiguration() {
+writeConfiguration() {
     dists=($@)
 
     echo "DISTS_VM :=" > ${CONF_FILE}
@@ -324,39 +340,73 @@ function writeConfiguration() {
 # ------------------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------------------
-function summary() {
+comment() {
 
-echo -e "\n#\n# Master Configuration File: ${ABOUT[@]}\n#" >> "${CONF_FILE}"
+    echo -e "\n#" >> "${CONF_FILE}"
+    for line in "$@"; do
+        echo -e "# ${line}" >> "${CONF_FILE}"
+    done
+    echo -e "#" >> "${CONF_FILE}"
 
-if ! elementIn "nrgaway.conf" ${ABOUT[@]}; then
-    # Over-write my personal git links with https
+}
+
+
+summary() {
+    # About - General Information
+    #--------------------------------------------------------------------------
+    about="${ABOUT[@]}"
+    comment "Qubes Release: ${RELEASE}" "" \
+            "Master Configuration File(s):" "${about}" "" \
+            "builder.conf linked to:" "${CONF_MASTER_DIR}/r${RELEASE}-${CONF_MASTER_FILE}"
+
+    # Set SSH mode on/off; will translate git@ to https:// if disabled
+    #--------------------------------------------------------------------------
+    comment "Set SSH_ACCESS to 1 if you can connect to repo via git@ otherwise" \
+            "set to 0 for https:// access."
+    echo -e "SSH_ACCESS := ${SSH_ACCESS}" >> "${CONF_FILE}"
+
+
+    # Handle custom branch specific configurations; disable default if enabled
+    #--------------------------------------------------------------------------
+    INCLUDES=""
+
+    if [[ -n "${OVERRIDE_SOURCE}" ]]; then
+        INCLUDES+="-include ${OVERRIDE_TARGET}"
+    else
+        # Normal configuration processing
+        if [ "${DISABLE_OTHER_REPO}" != 'true' ]; then
+            INCLUDES+="-include example-configs/r${RELEASE}-nrgaway-repos.conf\n"
+        fi
+
+        INCLUDES+="-include custom.conf"
+
+        # Always disable other repo (r?-nrgaway-repo) as it was handled here
+        DISABLE_OTHER_REPO=true
+    fi
+    comment "Other configuration files to be included"
+    echo -e "${INCLUDES}" >> "${CONF_FILE}"
+
+
+    # Undocumented disable repo hamdling
+    #--------------------------------------------------------------------------
+    if [ "${DISABLE_OTHER_REPO}" == 'true' ]; then
+        comment "Found a disable target, most likely in custom.conf, therefore setting" \
+                "r${RELEASE}-nrgaway-repo.conf as disabled."
+        echo -e "DISABLE_OTHER_REPO := ${DISABLE_OTHER_REPO}" >> "${CONF_FILE}"
+    fi
+
+    # Disable some COMPONENTS if template only build
+    #--------------------------------------------------------------------------
+    if [ "${TEMPLATE}" == "1" ]; then
+        comment "Only build templates (comment out to build all of Qubes)"
+        echo -e "TEMPLATE_ONLY := ${TEMPLATE}" >> "${CONF_FILE}"
+        echo -e 'COMPONENTS := $(TEMPLATE)' >> "${CONF_FILE}"
+        echo -e 'DIST_DOM0 :=' >> "${CONF_FILE}"
+    fi
+
+    # Write the file
+    #--------------------------------------------------------------------------
     cat >> "${CONF_FILE}" <<'EOF'
-
-# Personal qubes-builder repo
-GIT_URL_qubes_builder = https://github.com/nrgaway/qubes-builder.git
-BRANCH_qubes_builder = ubuntu
-
-# Personal linux-template-builder repo
-GIT_URL_linux_template_builder = https://github.com/nrgaway/linux-template-builder.git
-BRANCH_linux_template_builder = ubuntu
-
-# Personal core-agent-linux repo
-# GIT_URL_core_agent_linux = https://github.com/nrgaway/core-agent-linux.git
-# BRANCH_core_agent_linux = debian
-
-# Personal gui-agent-linux repo
-# git diff debian..upstream/release2
-# upstream still missing 'appvm-scripts/usrbin/qubes-session' commit
-GIT_URL_gui_agent_linux = https://github.com/nrgaway/gui-agent-linux.git
-BRANCH_gui_agent_linux = debian
-EOF
-
-fi
-
-    cat >> "${CONF_FILE}" <<'EOF'
-.PHONY: get-vms
-get-vms::
-	@echo $(DISTS_VM)
 
 about::
 	@echo "setup.conf"
@@ -367,17 +417,31 @@ EOF
     info
 }
 
-function finish() {
-read -r -d '' LAST_WORDS <<'EOF' || true
 
-Build Steps
------------
+instructions() {
+    # Qubes build info
+    if [ "${TEMPLATE}" != "1" ]; then
+        read -r -d '' BUILD_QUBES <<'EOF' || true
+Complete Qubes Build Steps
+--------------------------
+make get-sources
+make qubes
+make iso
+EOF
+    echo
+    info "${BUILD_QUBES}"
+    fi
+
+    # Template build info
+    read -r -d '' BUILD_TEMPLATES <<'EOF' || true
+Template Only Build Steps
+-------------------------
 make get-sources
 make template-modules
 make template
 EOF
-
-info "${LAST_WORDS}"
+    echo
+    info "${BUILD_TEMPLATES}"
 }
 
 
@@ -386,12 +450,115 @@ info "${LAST_WORDS}"
 # ------------------------------------------------------------------------------
 clear
 installDialog
-welcome
-checkKeys
-chooseDists DISTS
 
+# Link proper config files based on Qubes release picked
+{
+    #--------------------------------------------------------------------------
+    # Get variables from Makefile INCLDING setup.conf Makefile
+    #--------------------------------------------------------------------------
+    SSH_ACCESS="$(GET_VAR=SSH_ACCESS make get-var)"
+    TEMPLATE_ONLY="$(GET_VAR=TEMPLATE_ONLY make get-var)"
+    
+    #--------------------------------------------------------------------------
+    # Move setup.conf out of the way if it exists 
+    #--------------------------------------------------------------------------
+    if [ -f "${CONF_FILE}" ]; then
+        SELECTED_DISTS_VM=( $(GET_VAR=DISTS_VM make get-var) )
+        mv "${CONF_FILE}" "${CONF_FILE_OLD}"
+    fi
+
+    #--------------------------------------------------------------------------
+    # Copy the examples/nrgaway.conf file to builder.conf
+    #--------------------------------------------------------------------------
+    if ! [ -f "builder.conf" ]; then
+        # Choose Qubes version to build (2 or 3)
+        chooseVersion && RELEASE=2 || RELEASE=3
+
+        ln -fs "${CONF_MASTER_DIR}/r${RELEASE}-${CONF_MASTER_FILE}" builder.conf
+    else
+        # Parse about to determine version
+        RELEASE=($(make -B release))
+    fi
+
+    #--------------------------------------------------------------------------
+    # See if a branch specific override configuration file exists
+    #--------------------------------------------------------------------------
+    SRC_DIR=qubes-src
+    PERSONAL_DIR=qubes-tools/.conf  # TODO:  File Browser
+    BRANCH="$(git branch | sed -n -e 's/^\* \(.*\)/\1/p')"
+    OVERRIDE_SOURCE="${SRC_DIR}/${PERSONAL_DIR}/r${RELEASE}-${BRANCH}.conf"
+    OVERRIDE_TARGET="./override.conf"
+
+    if [ ! -d "${SRC_DIR}" ]; then
+        NO_SRC_DIR="${SRC_DIR} does not yet exist.  You may want to re-run setup after getting sources to find other configuration files."
+    fi
+
+    # Check if a branch specific user override configuration file is available
+    if [[ -f "${OVERRIDE_SOURCE}" && -h "${OVERRIDE_TARGET}" || ! -a "${OVERRIDE_TARGET}" ]]; then
+
+        # Display 'Use Override Dialog'
+        useOverrideConfiguration || unset OVERRIDE_SOURCE
+
+        # Soft link the configuration file
+        if [[ -n "${OVERRIDE_SOURCE}" ]]; then
+            ln -sf "${OVERRIDE_SOURCE}" "${OVERRIDE_TARGET}" || unset OVERRIDE_SOURCE
+            
+            # Some type of linking error
+            if [[ -z "${OVERRIDE_SOURCE}" ]]; then
+                message="Could not set link to override configuration file!\n\nUsing defaults."
+                dialog --msgbox "${message}" 8 60
+            fi
+        fi
+    else
+        unset OVERRIDE_SOURCE
+    fi
+
+    # If the overrides target exist, use it even if no other sources were used
+    if [[ -z "${OVERRIDE_SOURCE}" && -e "${OVERRIDE_TARGET}" ]]; then
+        OVERRIDE_SOURCE="${OVERRIDE_TARGET}"
+    fi
+
+    #--------------------------------------------------------------------------
+    # Get variables from Makefile NOT INCLDING setup.conf Makefile
+    #--------------------------------------------------------------------------
+    DISTS_VM=( $(GET_VAR=DISTS_VM make get-var) )
+    ABOUT=($(make -B about))
+    DISABLE_OTHER_REPO=($(make -B disable_other_repo))
+}
+
+#------------------------------------------------------------------------------
+# Choose if user has git ssh (commit) or http access to private repos
+#------------------------------------------------------------------------------
+sshAccessDialog ${SSH_ACCESS} && SSH_ACCESS=1 || SSH_ACCESS=0
+
+#------------------------------------------------------------------------------
+# Choose to build a complete system or templates only
+#------------------------------------------------------------------------------
+templateOnlyDialog ${TEMPLATE_ONLY} && TEMPLATE=1 || TEMPLATE=0
+
+#------------------------------------------------------------------------------
+# Verify signing keys and download and verify if required
+#------------------------------------------------------------------------------
+checkKeys
+
+#------------------------------------------------------------------------------
+# Select which templates to build
+#------------------------------------------------------------------------------
+chooseDistsDialog DISTS
+
+#------------------------------------------------------------------------------
+# Write custom setup.conf configuration data
+#------------------------------------------------------------------------------
 writeConfiguration ${DISTS[@]}
 
+#------------------------------------------------------------------------------
+# Display a summary of options selected
+#------------------------------------------------------------------------------
 clear
 summary
-finish
+
+#------------------------------------------------------------------------------
+# Display instructions on how to build
+#------------------------------------------------------------------------------
+instructions
+
