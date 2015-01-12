@@ -2,9 +2,10 @@
 # vim: set ts=4 sw=4 sts=4 et :
 
 CONF_MASTER_DIR=./example-configs
-CONF_MASTER_FILE=nrgaway.conf
+CONF_MASTER_FILE=setup.conf
 CONF_FILE=./setup.conf
-CONF_FILE_OLD=./setup-old.conf
+CONF_FILE_OLD=./setup.conf.old
+CONF_OVERRIDE=nrgaway-repos.conf
 
 DIALOG=/usr/bin/dialog
 
@@ -106,6 +107,7 @@ setArrayAsGlobal() {
     eval ${replaced/declare -/declare -g}
 } 
 
+
 # ------------------------------------------------------------------------------
 # $1: element to check for
 # $2: array to check for element in
@@ -144,6 +146,7 @@ installDialog() {
     fi
 }
 
+
 # ------------------------------------------------------------------------------
 # useOverrideConfiguration
 # ------------------------------------------------------------------------------
@@ -153,6 +156,7 @@ useOverrideConfiguration() {
     dialog --default-button yes --title "${title}" --yesno "${message}" 12 60
     return $?
 }
+
 
 # ------------------------------------------------------------------------------
 # chooseVersion
@@ -164,13 +168,19 @@ chooseVersion() {
         return $?
 }
 
+
 # ------------------------------------------------------------------------------
 # sshAccessDialog
 # ------------------------------------------------------------------------------
 sshAccessDialog() {
+    if [ "${1}" == "1" ]; then
+        default="yes"
+    else
+        default="no"
+    fi
     title="Enable SSH Access"
     message="Do you have ssh access to the repos?\n\nSelect 'Yes' to configure urls to match git or 'No' for https" 
-    dialog --default-button no --title "${title}" --yesno "${message}" 8 60
+    dialog --default-button ${default} --title "${title}" --yesno "${message}" 8 60
         return $?
 }
 
@@ -179,9 +189,14 @@ sshAccessDialog() {
 # templateOnlyDialog
 # ------------------------------------------------------------------------------
 templateOnlyDialog() {
+    if [ "${1}" == "1" ]; then
+        default="yes"
+    else
+        default="no"
+    fi
     title="Build Template Only?"
     message="Would you like to build only the templates?\n\nSelect 'Yes' to to only build templates or 'No' for complete build" 
-    dialog --default-button yes --title "${title}" --yesno "${message}" 8 60
+    dialog --default-button ${default} --title "${title}" --yesno "${message}" 8 60
         return $?
 }
 
@@ -211,17 +226,20 @@ read -r -d '' KEYS[0x5A4C6DAD] <<'EOF' || true
 )
 EOF
 
+
 gpgListKey() {
     text="$(gpg --list-key $1)" && retval=0 || retval=1
     echo "${text}"
     return $retval
 }
 
+
 gpgRecvKeys() {
     text="$(gpg --recv-keys $1)" && retval=0 || retval=1
     echo "${text}"
     return $retval
 }
+
 
 gpgVerifyKey() {
     text="$(gpg --with-colons --fingerprint $1)" && retval=0 || retval=1
@@ -238,6 +256,7 @@ gpgVerifyKey() {
     echo "${text}"
     return $retval
 }
+
 
 checkKeys() {
     echo "Parsing keys..."
@@ -301,7 +320,7 @@ chooseDistsDialog() {
     for choice in $choices; do
         DISTS+=("${DISTS_VM[$[choice - 1]]}")
     done
-    
+
     setArrayAsGlobal DISTS $return_global_var
 }
 
@@ -331,6 +350,7 @@ comment() {
     echo -e "#" >> "${CONF_FILE}"
 
 }
+
 
 summary() {
     # About - General Information
@@ -380,6 +400,7 @@ summary() {
     #--------------------------------------------------------------------------
     if [ "${TEMPLATE}" == "1" ]; then
         comment "Only build templates (comment out to build all of Qubes)"
+        echo -e "TEMPLATE_ONLY := ${TEMPLATE}" >> "${CONF_FILE}"
         echo -e 'COMPONENTS := $(TEMPLATE)' >> "${CONF_FILE}"
         echo -e 'DIST_DOM0 :=' >> "${CONF_FILE}"
     fi
@@ -387,10 +408,6 @@ summary() {
     # Write the file
     #--------------------------------------------------------------------------
     cat >> "${CONF_FILE}" <<'EOF'
-
-.PHONY: get-vms
-get-vms::
-	@echo $(DISTS_VM)
 
 about::
 	@echo "setup.conf"
@@ -400,6 +417,7 @@ EOF
     debug "$(cat ${CONF_FILE})"
     info
 }
+
 
 instructions() {
     # Qubes build info
@@ -437,9 +455,16 @@ installDialog
 # Link proper config files based on Qubes release picked
 {
     #--------------------------------------------------------------------------
+    # Get variables from Makefile INCLDING setup.conf Makefile
+    #--------------------------------------------------------------------------
+    SSH_ACCESS="$(GET_VAR=SSH_ACCESS make get-var)"
+    TEMPLATE_ONLY="$(GET_VAR=TEMPLATE_ONLY make get-var)"
+
+    #--------------------------------------------------------------------------
     # Move setup.conf out of the way if it exists 
     #--------------------------------------------------------------------------
     if [ -f "${CONF_FILE}" ]; then
+        SELECTED_DISTS_VM=( $(GET_VAR=DISTS_VM make get-var) )
         mv "${CONF_FILE}" "${CONF_FILE_OLD}"
     fi
 
@@ -459,18 +484,19 @@ installDialog
     #--------------------------------------------------------------------------
     # See if a branch specific override configuration file exists
     #--------------------------------------------------------------------------
-    SRC_DIR=qubes-src
+    SRC_DIR=./qubes-src
     PERSONAL_DIR=qubes-tools/.conf  # TODO:  File Browser
     BRANCH="$(git branch | sed -n -e 's/^\* \(.*\)/\1/p')"
     OVERRIDE_SOURCE="${SRC_DIR}/${PERSONAL_DIR}/r${RELEASE}-${BRANCH}.conf"
     OVERRIDE_TARGET="./override.conf"
+    CONF_OVERRIDE="${CONF_MASTER_DIR}/r${RELEASE}-${CONF_OVERRIDE}"
 
     if [ ! -d "${SRC_DIR}" ]; then
         NO_SRC_DIR="${SRC_DIR} does not yet exist.  You may want to re-run setup after getting sources to find other configuration files."
     fi
 
     # Check if a branch specific user override configuration file is available
-    if [[ -f "${OVERRIDE_SOURCE}" && -h "${OVERRIDE_TARGET}" || ! -a "${OVERRIDE_TARGET}" ]]; then
+    if [ -f "${OVERRIDE_SOURCE}" ] && [[ ! -a "${OVERRIDE_TARGET}" || -h "${OVERRIDE_TARGET}" ]]; then
 
         # Display 'Use Override Dialog'
         useOverrideConfiguration || unset OVERRIDE_SOURCE
@@ -485,8 +511,11 @@ installDialog
                 dialog --msgbox "${message}" 8 60
             fi
         fi
-    else
-        unset OVERRIDE_SOURCE
+
+    # Use overrides in example-configs directory
+    elif [ -f "${CONF_OVERRIDE}" ] && [[ ! -a "${OVERRIDE_TARGET}" || -h "${OVERRIDE_TARGET}" ]]; then
+        OVERRIDE_SOURCE="${CONF_OVERRIDE}"
+        ln -sf "${OVERRIDE_SOURCE}" "${OVERRIDE_TARGET}" || unset OVERRIDE_SOURCE
     fi
 
     # If the overrides target exist, use it even if no other sources were used
@@ -495,25 +524,23 @@ installDialog
     fi
 
     #--------------------------------------------------------------------------
+    # Get variables from Makefile NOT INCLDING setup.conf Makefile
     #--------------------------------------------------------------------------
-    DISTS_VM=($(make -B get-vms))
+    SELECTED_DISTS_VM=${SELECTED_DISTS_VM-( $(GET_VAR=DIST_DOM0 make get-var) )}
+    DISTS_VM=( $(GET_VAR=DISTS_VM make get-var) )
     ABOUT=($(make -B about))
     DISABLE_OTHER_REPO=($(make -B disable_other_repo))
-
-    if [ -f "${CONF_FILE_OLD}" ]; then
-        SELECTED_DISTS_VM=($(BUILDERCONF="${CONF_FILE_OLD}" make -B get-vms))
-    fi
 }
 
 #------------------------------------------------------------------------------
 # Choose if user has git ssh (commit) or http access to private repos
 #------------------------------------------------------------------------------
-sshAccessDialog && SSH_ACCESS=1 || SSH_ACCESS=0
+sshAccessDialog ${SSH_ACCESS} && SSH_ACCESS=1 || SSH_ACCESS=0
 
 #------------------------------------------------------------------------------
 # Choose to build a complete system or templates only
 #------------------------------------------------------------------------------
-templateOnlyDialog && TEMPLATE=1 || TEMPLATE=0
+templateOnlyDialog ${TEMPLATE_ONLY} && TEMPLATE=1 || TEMPLATE=0
 
 #------------------------------------------------------------------------------
 # Verify signing keys and download and verify if required
