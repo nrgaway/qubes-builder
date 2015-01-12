@@ -1,8 +1,11 @@
 chroot-*
 qubes-src
 builder*.conf
+setup*.conf
+override.conf
 rpm/
 keyrings/
 mnt_archlinux_dvd/
 windows-prereqs/
 windows-sources.img
+qubes-rpms-mirror-repo/repodata
