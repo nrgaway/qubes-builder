@@ -2,9 +2,10 @@
 # vim: set ts=4 sw=4 sts=4 et :
 
 CONF_MASTER_DIR=./example-configs
-CONF_MASTER_FILE=nrgaway.conf
+CONF_MASTER_FILE=setup.conf
 CONF_FILE=./setup.conf
 CONF_FILE_OLD=./setup.conf.old
+CONF_OVERRIDE=nrgaway-repos.conf
 
 DIALOG=/usr/bin/dialog
 
@@ -458,7 +459,7 @@ installDialog
     #--------------------------------------------------------------------------
     SSH_ACCESS="$(GET_VAR=SSH_ACCESS make get-var)"
     TEMPLATE_ONLY="$(GET_VAR=TEMPLATE_ONLY make get-var)"
-    
+
     #--------------------------------------------------------------------------
     # Move setup.conf out of the way if it exists 
     #--------------------------------------------------------------------------
@@ -483,18 +484,19 @@ installDialog
     #--------------------------------------------------------------------------
     # See if a branch specific override configuration file exists
     #--------------------------------------------------------------------------
-    SRC_DIR=qubes-src
+    SRC_DIR=./qubes-src
     PERSONAL_DIR=qubes-tools/.conf  # TODO:  File Browser
     BRANCH="$(git branch | sed -n -e 's/^\* \(.*\)/\1/p')"
     OVERRIDE_SOURCE="${SRC_DIR}/${PERSONAL_DIR}/r${RELEASE}-${BRANCH}.conf"
     OVERRIDE_TARGET="./override.conf"
+    CONF_OVERRIDE="${CONF_MASTER_DIR}/r${RELEASE}-${CONF_OVERRIDE}"
 
     if [ ! -d "${SRC_DIR}" ]; then
         NO_SRC_DIR="${SRC_DIR} does not yet exist.  You may want to re-run setup after getting sources to find other configuration files."
     fi
 
     # Check if a branch specific user override configuration file is available
-    if [[ -f "${OVERRIDE_SOURCE}" && -h "${OVERRIDE_TARGET}" || ! -a "${OVERRIDE_TARGET}" ]]; then
+    if [ -f "${OVERRIDE_SOURCE}" ] && [[ ! -a "${OVERRIDE_TARGET}" || -h "${OVERRIDE_TARGET}" ]]; then
 
         # Display 'Use Override Dialog'
         useOverrideConfiguration || unset OVERRIDE_SOURCE
@@ -509,8 +511,11 @@ installDialog
                 dialog --msgbox "${message}" 8 60
             fi
         fi
-    else
-        unset OVERRIDE_SOURCE
+
+    # Use overrides in example-configs directory
+    elif [ -f "${CONF_OVERRIDE}" ] && [[ ! -a "${OVERRIDE_TARGET}" || -h "${OVERRIDE_TARGET}" ]]; then
+        OVERRIDE_SOURCE="${CONF_OVERRIDE}"
+        ln -sf "${OVERRIDE_SOURCE}" "${OVERRIDE_TARGET}" || unset OVERRIDE_SOURCE
     fi
 
     # If the overrides target exist, use it even if no other sources were used
@@ -521,6 +526,7 @@ installDialog
     #--------------------------------------------------------------------------
     # Get variables from Makefile NOT INCLDING setup.conf Makefile
     #--------------------------------------------------------------------------
+    SELECTED_DISTS_VM=${SELECTED_DISTS_VM-( $(GET_VAR=DIST_DOM0 make get-var) )}
     DISTS_VM=( $(GET_VAR=DISTS_VM make get-var) )
     ABOUT=($(make -B about))
     DISABLE_OTHER_REPO=($(make -B disable_other_repo))

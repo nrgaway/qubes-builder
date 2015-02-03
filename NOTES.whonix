@@ -9,6 +9,9 @@
                           Whonix Checks and Issues
 ---------------------------------------------------------------------------------
 Current issues:
+  - Timezone is exposed (xenstore-read qubes-timezone)
+  - Would be nice to expose locale to VM
+
   - Whonix notifications seems to have reverted back to old style
 
   - /etc/profile.d/20_power_savings_disable_in_vms.sh prevents qvm-run from
@@ -22,6 +25,28 @@ Current issues:
 Build issues:
   - None
   - To build whonix-qubes package in Fedora, install pbuilder as a depend
+
+Debian Package Issues:
+----------------------
+Seems like wheezy chroot /dev/fd was not linked correctly.  Currently it had
+no numerical references to /proc/self/fd, so I (in chroot env):
+  cd /dev
+  mv fd fd.orig
+  ln -s /proc/self/fd .
+
+Reverted back to original in Makefile.debian again
+# XXX: replace search with '.' not ':'
+listfiles = awk 'section == "Files:" { print $$5 } /^[A-Z].*:$$/ { section=$$1 }'
+#listfiles = awk 'section == "Files:" { print $$5 } /^[A-Z].*.$$/ { section=$$1 }'
+^^^ - to allow epoch: in version number.  but still version getting written without
+
+# Actual file:
+whonix-setup-wizard_0.3-1wheezy1_amd64.changes
+whonix-setup-wizard_0.3-1 <-- New parser
+# With ':'
+whonix-setup-wizard_3:0.3-1*.changes' for reading (No such file or directory
+# With '.'
+whonix-setup-wizard_3:0.3-1*.changes' for reading (No such file or directory)
 
 
 ---------------------------------------------------------------------------------

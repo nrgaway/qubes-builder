@@ -2,6 +2,7 @@ chroot-*
 qubes-src
 builder*.conf
 setup*.conf
+setup*.conf.old
 override.conf
 rpm/
 keyrings/

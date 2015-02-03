@@ -95,7 +95,7 @@ get-sources::
 	done
 
 .PHONY: check-depend
-check-depend:
+check-depend::
 	@if ! which rpm >/dev/null 2>&1; then
 		echo "WARNING: rpm executable not found (are you on cygwin?)"; \
 	elif [ $(VERBOSE) -gt 0 ]; then \

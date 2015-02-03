@@ -1,4 +1,4 @@
-# Makefile for debian package build
+# Makefile for ubuntu package build
 # 
 # Davíð Steinn Geirsson <david@dsg.is>
 #
@@ -55,13 +55,12 @@ export DEBIANVERSION
 
 ### Local variables
 RUN_AS_USER = user
-REPO_CHROOT_DIR ?= chroot-debian
+REPO_CHROOT_DIR ?= chroot-ubuntu
 
 DEBIAN_DEPENDENCIES := dpkg-dev debootstrap
 PARSER=./scripts-debian/debian-parser
 
 ifneq (,$(DEBIAN_BUILD_DIRS))
-#package_file = $(shell head -n 1 $(ORIG_SRC)/debian/changelog  | awk '{print $$1, $$2}' | sed 's/\([a-zA-Z\-]*\) (\(.*\))/\1_\2/')
 package_file = $(shell $(PARSER) changelog --package-release-name-full $(ORIG_SRC)/debian/changelog)
 orig_package_file = $(shell $(PARSER) changelog --package-release-name $(ORIG_SRC)/debian/changelog)
 endif
@@ -77,19 +76,26 @@ endif
 endif
 
 define aptdistributions
-Origin: Qubes Debian
-Label: Qubes Debian
-Codename: wheezy
+Origin: Qubes Ubuntu
+Label: Qubes Ubuntu
+Codename: trusty
 Architectures: amd64 source
 Components: main
-Description: Apt repository with qubes domU support tools for debian wheezy
+Description: Apt repository with qubes domU support tools for ubuntu trusty
 
-Origin: Qubes Debian
-Label: Qubes Debian
-Codename: jessie
+Origin: Qubes Ubuntu
+Label: Qubes Ubuntu
+Codename: utopic
 Architectures: amd64 source
 Components: main
-Description: Apt repository with qubes domU support tools for debian jessie
+Description: Apt repository with qubes domU support tools for ubuntu utopic
+
+Origin: Qubes Ubuntu
+Label: Qubes Ubuntu
+Codename: vivid
+Architectures: amd64 source
+Components: main
+Description: Apt repository with qubes domU support tools for ubuntu vivid
 endef
 export aptdistributions
 
@@ -105,23 +111,14 @@ dist-prepare-chroot: $(CHROOT_DIR)/home/user/.prepared_base
 		mkdir -p $(CHROOT_DIR)/tmp/qubes-deb;\
 		sudo mount --bind $(BUILDER_REPO_DIR) $(CHROOT_DIR)/tmp/qubes-deb;\
 	fi
-	# XXX:
-	# Debian chroot /dev/fd is all messed up; links are not normal and prevents dpkg redirect:
-	# /make-helper.bsh: line 256: /dev/fd/62: No such file or directory
-	#@if [ ! -L $(CHROOT_DIR)/dev/fd ]; then \
-	#    if [ ! -a $(CHROOT_DIR)/dev/fd ]; then \
-	#    	sudo chroot $(CHROOT_DIR) mv /dev/fd /dev/fd.dist; \
-	#    fi; \
-	#    sudo chroot $(CHROOT_DIR) ln -s /proc/self/fd /dev/fd; \
-	#fi
 
-$(CHROOT_DIR)/home/user/.prepared_base: ./prepare-chroot-debian
+$(CHROOT_DIR)/home/user/.prepared_base: ./prepare-chroot-ubuntu
 	# Make sure repo directory exists
 	@if ! [ -d "$(PWD)/qubes-rpms-mirror-repo/$(DIST)/dists" ]; then\
 	    mkdir -p "$(PWD)/qubes-rpms-mirror-repo/$(DIST)/dists";\
 	fi
 	@echo "-> Preparing $(DIST) build environment"
-	@sudo -E ./prepare-chroot-debian $(CHROOT_DIR) $(DIST)
+	@sudo -E ./prepare-chroot-ubuntu $(CHROOT_DIR) $(DIST)
 	@touch $(CHROOT_DIR)/home/user/.prepared_base
 
 dist-prep:
@@ -137,9 +134,6 @@ dist-prep:
 dist-build-dep:
 	./update-local-repo.sh $(DIST)
 	sudo chroot $(CHROOT_DIR) apt-get update
-	#grep Build-Depends: $(CHROOT_DIR)$(DIST_SRC)/debian/control | cut -d: -f 2- |\
-	#	sed -e 's/ *, */\n/g'| cut -d'(' -f 1 |tr -d " " |\
-	#	xargs sudo chroot $(CHROOT_DIR) apt-get install -y
 	$(PARSER) control --build-depends $(CHROOT_DIR)$(DIST_SRC)/debian/control |\
 		xargs sudo chroot $(CHROOT_DIR) apt-get install -y
 
@@ -166,13 +160,6 @@ endif
 	    sudo $(CHROOT_ENV) chroot $(CHROOT_DIR) su $(RUN_AS_USER) -c 'cd $(DIST_SRC); export LC_ALL=C; make -s dist'; \
 	fi; \
 
-	## If Debian package is based on quilt format and the upstream original is not present, create an archive
-	#if grep -q 'quilt' $(CHROOT_DIR)/$(DIST_SRC)/debian/source/format; then \
-	#    if ! [ -e $(CHROOT_DIR)/$(DIST_SRC)/../$(orig_package_file).orig.tar.gz ]; then \
-	#        tar cfvz $(CHROOT_DIR)/$(DIST_SRC)/../$(orig_package_file).orig.tar.gz --exclude=*.git* --exclude=deb --exclude=debian -C $(CHROOT_DIR)/$(DIST_SRC) . ; \
-	#    fi; \
-	#fi; \
-
 	sudo $(CHROOT_ENV) chroot $(CHROOT_DIR) su $(RUN_AS_USER) -c 'cd $(DIST_SRC); export LC_ALL=C; debchange -l$(DIST) "Build for $(DIST)"; debchange --force-distribution -r -D $(DIST) $(DIST); dpkg-buildpackage -sa -k${SIGN_KEY}'
 
 dist-copy-out:
@@ -198,10 +185,6 @@ else
 	-sudo umount $(REPO_CHROOT_DIR)/tmp/qubes-apt-repo $(REPO_CHROOT_DIR)/tmp/qubes-deb 2>/dev/null
 
 	# Softlink to the first distribution called; it will be used to create and store repo
-	#if ! [ -L $(REPO_CHROOT_DIR) ]; then \
-	#    rm -rf ${REPO_CHROOT_DIR}; \
-	#    ln -sf chroot-${DIST} ${REPO_CHROOT_DIR}; \
-	#fi
 	if ! [ -L $(REPO_CHROOT_DIR) ]; then \
 	    ln -sf chroot-${DIST} ${REPO_CHROOT_DIR}; \
 	fi
