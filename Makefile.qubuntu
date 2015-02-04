@@ -1,4 +1,4 @@
-# Makefile for debian package build
+# Makefile for qubuntu package build
 # 
 # Davíð Steinn Geirsson <david@dsg.is>
 #
@@ -55,7 +55,7 @@ export DEBIANVERSION
 
 ### Local variables
 RUN_AS_USER = user
-REPO_CHROOT_DIR ?= chroot-debian
+REPO_CHROOT_DIR ?= chroot-qubuntu
 
 DEBIAN_DEPENDENCIES := dpkg-dev debootstrap
 PARSER=./scripts-debian/debian-parser
@@ -76,19 +76,26 @@ endif
 endif
 
 define aptdistributions
-Origin: Qubes Debian
-Label: Qubes Debian
-Codename: wheezy
+Origin: Qubes Qubuntu
+Label: Qubes Qubuntu
+Codename: trusty
 Architectures: amd64 source
 Components: main
-Description: Apt repository with qubes domU support tools for debian wheezy
+Description: Apt repository with qubes domU support tools for qubuntu trusty
 
-Origin: Qubes Debian
-Label: Qubes Debian
-Codename: jessie
+Origin: Qubes Qubuntu
+Label: Qubes Qubuntu
+Codename: utopic
 Architectures: amd64 source
 Components: main
-Description: Apt repository with qubes domU support tools for debian jessie
+Description: Apt repository with qubes domU support tools for qubuntu utopic
+
+Origin: Qubes Qubuntu
+Label: Qubes Qubuntu
+Codename: vivid
+Architectures: amd64 source
+Components: main
+Description: Apt repository with qubes domU support tools for qubuntu vivid
 endef
 export aptdistributions
 
@@ -105,13 +112,13 @@ dist-prepare-chroot: $(CHROOT_DIR)/home/user/.prepared_base
 		sudo mount --bind $(BUILDER_REPO_DIR) $(CHROOT_DIR)/tmp/qubes-deb;\
 	fi
 
-$(CHROOT_DIR)/home/user/.prepared_base: ./prepare-chroot-debian
+$(CHROOT_DIR)/home/user/.prepared_base: ./prepare-chroot-qubuntu
 	# Make sure repo directory exists
 	@if ! [ -d "$(PWD)/qubes-rpms-mirror-repo/$(DIST)/dists" ]; then\
 	    mkdir -p "$(PWD)/qubes-rpms-mirror-repo/$(DIST)/dists";\
 	fi
 	@echo "-> Preparing $(DIST) build environment"
-	@sudo -E ./prepare-chroot-debian $(CHROOT_DIR) $(DIST)
+	@sudo -E ./prepare-chroot-qubuntu $(CHROOT_DIR) $(DIST)
 	@touch $(CHROOT_DIR)/home/user/.prepared_base
 
 dist-prep:
@@ -196,4 +203,3 @@ else
 	sudo umount $(REPO_CHROOT_DIR)/tmp/qubes-apt-repo
 	sudo umount $(REPO_CHROOT_DIR)/tmp/qubes-deb
 endif
-

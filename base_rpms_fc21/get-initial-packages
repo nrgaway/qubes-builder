@@ -1,0 +1,25 @@
+#!/bin/bash
+
+#
+# Grab all the required packages to initially build Fedora
+# 
+
+set -e
+
+RELEASE=21
+INITIAL_PACKAGES="filesystem setup fedora-release"
+
+DISTRO=fc${RELEASE}
+CHROOT_DIR="$(readlink -m $(dirname ${0})/../chroot-${DISTRO})"
+SELF_DIR="$(readlink -m $(dirname ${0}))"
+BUILD_DIR="$(readlink -m $(dirname ${0})/..)"
+
+sudo mkdir -p "${CHROOT_DIR}"
+
+echo "-> Initializing RPM database..."
+sudo rpm --initdb --root="${CHROOT_DIR}"
+sudo rpm --import --root="${CHROOT_DIR}" "${BUILD_DIR}/keys_${DISTRO}/"*
+
+echo "-> Retreiving core RPM packages..."
+
+sudo yum --disablerepo=\* --enablerepo=fedora -y --installroot="${CHROOT_DIR}" --releasever=${RELEASE} install --downloadonly --downloaddir="${BUILD_DIR}/base_rpms_${DISTRO}" ${INITIAL_PACKAGES}
