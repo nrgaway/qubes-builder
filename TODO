@@ -5,30 +5,17 @@
 ==============================================================================
 
 ALL: 
-- Edited 'core-vchan-xen/vchan/Makefile.linux', moving libs to end hoping
-  it will allow pulse audio to work in Ubuntu
-
-- Removed:
-  - acpid
-  - xserver-xorg-core
-  - x11-xserver-utils
-  - xinit
-  - browser-plugin-gnash
-
-- Moved as a flavor:
-  - flashplugin-nonfree
-
-- Added in extra packages installed by gnome by default to wubes packages
-  - make sure they work with d7 and ubuntu
-
 - Test with gnome installed; since Fedora installs gnome by default; Maybe
   graphics would be better if gnome-desktop-environment is also installed?
 
 - Test building Fedora21 without my patches to pulse audio?  - Use Marmarek's
 
+- REMOVE LXC code from distributions.sh
+
+
 /usr/bin/glib-compile-schemas %{_datadir}/glib-2.0/schemas ??
 /usr/bin/glib-compile-schemas /usr/share/glib-2.0/schemas ??
-gesttrings?
+gsettings?
 
 - I can't test netvm's cause of my network card, but these are the results I have gotten:
   debian 7:
@@ -44,31 +31,33 @@ gesttrings?
     wired: Fail
     wireless: Fail - option is presented to configure wireless, and connects to WIFI but no traffic
     
-- REMOVE LXC code from distributions.sh
 
 Working:
 --------
 Debian 7/8:
-  - pulse
-  - proxyvm
-  - flash
-  - new .desktop handler
+  + locales working
+  + pulse
+  + proxyvm
+  + flash
+  + new .desktop handler
 
 Ubuntu trusty/utopic:
-  - pulse
-  - proxyvm
-  - flash
-  - new .desktop handler
+  + locales working
+  + pulse
+  + proxyvm
+  + flash
+  + new .desktop handler
+
+Fedora 21:
+  + locales working
+  + pulse
+  ? proxyvm
+  ? flash -- not installed; will include repo
+  ? new .desktop handler -- should work with code but not yet written to take 
+    advantage of it.  Will need to be part of a trigger
 
 qubes-builder
 -------------------------------------------------------------------------------
-- issues with building quilt files and using Whonix makefile
-  - make dist:  do that manually on test repo; see exactly what is included in .tar.gz
-    and exactly how its named, then:
-    - grep -q quilt .../debian/source/format
-    -if quilt:  get name and ../tar it
-  - This should get rid of wierd error and satisfy quilt requirements
-
 - Create configuration files for debain that can just be copied to builer.conf
   -- with no use of setup
 - Review README; remove those not required
@@ -79,8 +68,7 @@ Debian
   - Also try my salt scripts; what about gsettings.. where that file; compare deb8 to deb8-gnome
 
 - Appy theme for root (maybe kde in whonix?)
-- Should I uninstall flash for default installation; make a flavour? -- YES
-- Remove /X11_25xxx and place .xsettings, etc in .skel?; moce to root as well?
+- Remove /X11_25xxx and place .xsettings, etc in .skel?; move to root as well?
 - Qubes Manger will show updates are available but won't clear them after update
 
 ===============================================================================
@@ -106,68 +94,41 @@ xfonts-100dpi xfonts-75dpi xfonts-scalable
 libxvmc1 x11-session-utils xfonts-100dpi xfonts-75dpi xfonts-scalable
 
 
-
 Debian 7
 --------
-- pulseaudio not working -- only on first boot of AppVM?
-  - seems not to work on first boot.
-  - flakey after that; maybe my .desktop code not working... check into it
-  - ... check for any backports ...
+
 
 Debian 8
 --------
-- Still missing Files application on whitelist
-
 
 
 Ubuntu
 -------------------------------------------------------------------------------
-- remove qubes repo def in /etc/apt/sources.list.d/qubes-r2.list
-  Currently testing to see if a 04_install_qubes_post.sh will be found
-- Missing extra packages that were added to Debian
 - update appmenus once new packages installed
 - if trusty and utopic actully work okay; see if vivid works too
 
+
 Trusty + Utopic
 ---------------
-- Installed pulseaudio 5 PPA; version 4 has problems:
- 1683 pts/0    Tl     0:00 vi start-pulseaudio-with-vchan
- 1685 pts/1    S      0:00 /bin/sh /usr/bin/start-pulseaudio-with-vchan
- 1686 pts/1    S      0:00 pulseaudio -vvvv --log-time=1 --start -n --file=/etc/pulse/qubes-default.pa --exit-idle-time=-1
- 1688 ?        Ss     0:00 pulseaudio -vvvv --log-time=1 --start -n --file=/etc/pulse/qubes-default.pa --exit-idle-time=-1
- 1689 ?        S<     0:00 pulseaudio -vvvv --log-time=1 --start -n --file=/etc/pulse/qubes-default.pa --exit-idle-time=-1
- 1704 pts/0    S+     0:00 grep --color=auto -i pulse
-
-Desktop flavour errors
-----------------------
-gnome-settings-daemon crashes on utopic startup (not tested with trusty or vivid yet)
-oneconf-service will crash about 3 minutes after boot
-oneconf-query will crash about 4 minutes after boot
+Desktop flavour errors:  
+  gnome-settings-daemon crashes on utopic startup (not tested with trusty or vivid yet)
+  oneconf-service will crash about 3 minutes after boot
+  oneconf-query will crash about 4 minutes after boot
 
 
 Whonix
 -------------------------------------------------------------------------------
-- Check for updates python-guimessages / whonix-setup-wizard
-- Verify above packages
-- Automatically generate new Makefile, Makefile.builder and parser + commit
-
 Workstation:  Error Message to fix
   First boot! Whonix Repository Wizard should be run, but is not installed. It looks like Whonix Gateway is not fully installed!
   Click "Next" to finish Whonix Setup.
 
-Removed:
-  - acpi-support-base
-
-- Pulse audio
-- WS:  2 setup screen displaying on start; one blank
 
 
 Fedora 21
 -------------------------------------------------------------------------------
 - Come up with another solution for qubes-app-linux-pdf-converter instead of using
-  outilus-actions rphaned package 
+  nautilus-actions orphaned package 
 - Add adobe repo if its not installed
-- Don't install flash
 - Add other repos
 
 
@@ -180,17 +141,6 @@ gui-agent-linux
 qubes-app-linux-pdf-converter - merge; Marek wants other solution; not using orphaned package
 
 
-Merging
--------------------------------------------------------------------------------
-linux-template-builder
-    - clone fresh release2 / master branch
-    - merge in sections; core; debian; whonix; fedora
-
-qubes-builder
-    - clone fresh master
-    - merge in sections; core; setup; debian; ubuntu; fc21
-
-
 ===============================================================================
 ===============================================================================
 ==                                                                          ===
@@ -199,11 +149,43 @@ qubes-builder
 ===============================================================================
 ===============================================================================
 
+ALL:
+----
+- Added some more x-windows packages to packages-qubes.list to attempt to fix
+  garbled screen.  The packages work with all Debian and Ubuntu dists.
+  - TODO:  Copy to core-agent-linux if tests prove successful
+
+- Fixed 'core-vchan-xen/vchan/Makefile.linux', moving libs to end to allow
+  pulse audio to work in Ubuntu.  Needed to upgrade to pa5.0 though
+
+- Removed:
+  - acpid
+  - xserver-xorg-core
+  - x11-xserver-utils
+  - xinit
+  - browser-plugin-gnash
+
+- Moved as a flavor; not included by default:
+  - flashplugin-nonfree
+
+
+Debian 7
+--------
+- pulseaudio now working -- had conflict with system pulse audio
+  - fixed with new .desktop trigger handler code
+  - pa 4.0 is available in backports but does not work (same issue
+    Ubuntu had).  Still using pa 2.0
+
+
+Debian 8
+--------
+- 'Files' menu link now back in whitelist as proper name
+
 
 Trusty + Utopic
 ---------------
-- No pulseausio
-- No flash
+- Installed pulseaudio 5 PPA; version 4 has problems:
+- Added a flash template flavor (+flash)
 - Missing firefox on start (maybe just need to add to appmenus)
  1683 pts/0    Tl     0:00 vi start-pulseaudio-with-vchan
  1685 pts/1    S      0:00 /bin/sh /usr/bin/start-pulseaudio-with-vchan
@@ -211,3 +193,26 @@ Trusty + Utopic
  1688 ?        Ss     0:00 pulseaudio -vvvv --log-time=1 --start -n --file=/etc/pulse/qubes-default.pa --exit-idle-time=-1
  1689 ?        S<     0:00 pulseaudio -vvvv --log-time=1 --start -n --file=/etc/pulse/qubes-default.pa --exit-idle-time=-1
  1704 pts/0    S+     0:00 grep --color=auto -i pulse
+
+- remove qubes repo def in /etc/apt/sources.list.d/qubes-r2.list
+
+
+Whonix
+-------------------------------------------------------------------------------
+- Using most resent version of python-guimessages / whonix-setup-wizard
+- Verified to work
+- Automatically generates new Makefile, Makefile.builder and parser + commit
+  on 'make template-modules'
+
+Removed:
+  - acpi-support-base
+
+
+qubes-builder
+-------------------------------------------------------------------------------
+- issues with building quilt files and using Whonix makefile
+  - make dist:  do that manually on test repo; see exactly what is included in .tar.gz
+    and exactly how its named, then:
+    - grep -q quilt .../debian/source/format
+    -if quilt:  get name and ../tar it
+  - This should get rid of wierd error and satisfy quilt requirements
