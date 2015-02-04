@@ -162,9 +162,14 @@ useOverrideConfiguration() {
 # chooseVersion
 # ------------------------------------------------------------------------------
 chooseVersion() {
+    release="${1}"
+    default="yes"
+    if [ "${release}" == "3" ]; then
+        default="no"
+    fi
     title="Choose Qubes Version"
     message="Choose which version of Qubes you wish to build.\n\nValid options are either the stable release 2 or development release 3 version." 
-    dialog --default-button yes --yes-label "Release 2" --no-label "Release 3" --title "${title}" --yesno "${message}" 8 60
+    dialog --default-button "${default}" --yes-label "Release 2" --no-label "Release 3" --title "${title}" --yesno "${message}" 8 60
         return $?
 }
 
@@ -479,6 +484,14 @@ installDialog
     else
         # Parse about to determine version
         RELEASE=($(make -B release))
+
+        # Choose Qubes version to build (2 or 3)
+        chooseVersion "${RELEASE}" && XRELEASE=2 || XRELEASE=3
+        
+        if [ ${RELEASE} != "${XRELEASE}" ]; then
+            RELEASE="${XRELEASE}"
+            ln -fs "${CONF_MASTER_DIR}/r${RELEASE}-${CONF_MASTER_FILE}" builder.conf
+        fi
     fi
 
     #--------------------------------------------------------------------------
@@ -489,7 +502,14 @@ installDialog
     BRANCH="$(git branch | sed -n -e 's/^\* \(.*\)/\1/p')"
     OVERRIDE_SOURCE="${SRC_DIR}/${PERSONAL_DIR}/r${RELEASE}-${BRANCH}.conf"
     OVERRIDE_TARGET="./override.conf"
-    CONF_OVERRIDE="${CONF_MASTER_DIR}/r${RELEASE}-${CONF_OVERRIDE}"
+    CONF_OVERRIDE="${CONF_MASTER_DIR}/r${RELEASE}-${CONF_OVERRIDE}"  # nrgaway-repos.conf
+
+    # For reference only; Already set at top
+    # CONF_MASTER_DIR=./example-configs
+    # CONF_MASTER_FILE=setup.conf
+    # CONF_FILE=./setup.conf
+    # CONF_FILE_OLD=./setup.conf.old
+    # CONF_OVERRIDE=nrgaway-repos.conf
 
     if [ ! -d "${SRC_DIR}" ]; then
         NO_SRC_DIR="${SRC_DIR} does not yet exist.  You may want to re-run setup after getting sources to find other configuration files."
@@ -512,6 +532,9 @@ installDialog
             fi
         fi
 
+    # TODO:
+    # XXX: think user should be prompted to use override.  Include description of override in 
+    #      override conf file that can be displayed
     # Use overrides in example-configs directory
     elif [ -f "${CONF_OVERRIDE}" ] && [[ ! -a "${OVERRIDE_TARGET}" || -h "${OVERRIDE_TARGET}" ]]; then
         OVERRIDE_SOURCE="${CONF_OVERRIDE}"
