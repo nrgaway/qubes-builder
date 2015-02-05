@@ -4,6 +4,18 @@
                            CURRENT TODO LIST
 ==============================================================================
 
+NOTE_TO_SELF:
+  dd if=Qubes-20150204-x86_64-DVD.iso of=/dev/xvdi
+
+CONFIGURATION:
+- python-guimessages and whonix-setup-wizard are not yet signed
+- qubes-whonix is not currently in patrick's repo; using github
+  consider adding to own repo so they can be signed
+- example-configs/extend-rules.conf
+  - commented out 'export DIST=None' since 'make iso' was using the 'None'
+    value when attempting to copy template
+  - Make sure we can still do a 'make clean-all'
+
 ALL: 
 - Test with gnome installed; since Fedora installs gnome by default; Maybe
   graphics would be better if gnome-desktop-environment is also installed?

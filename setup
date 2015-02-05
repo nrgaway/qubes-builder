@@ -2,10 +2,11 @@
 # vim: set ts=4 sw=4 sts=4 et :
 
 CONF_MASTER_DIR=./example-configs
-CONF_MASTER_FILE=setup.conf
+CONF_MASTER_FILE=templates.conf
 CONF_FILE=./setup.conf
 CONF_FILE_OLD=./setup.conf.old
-CONF_OVERRIDE=nrgaway-repos.conf
+CONF_OVERRIDE=override.conf
+CONF_RELEASE=./builder-release.conf
 
 DIALOG=/usr/bin/dialog
 
@@ -362,8 +363,8 @@ summary() {
     #--------------------------------------------------------------------------
     about="${ABOUT[@]}"
     comment "Qubes Release: ${RELEASE}" "" \
-            "Master Configuration File(s):" "${about}" "" \
-            "builder.conf linked to:" "${CONF_MASTER_DIR}/r${RELEASE}-${CONF_MASTER_FILE}"
+            "Master Configuration File(s):" "setup.conf ${about}" "" \
+            "builder.conf linked to:" "${CONF_MASTER_DIR}/${CONF_MASTER_FILE}"
 
     # Set SSH mode on/off; will translate git@ to https:// if disabled
     #--------------------------------------------------------------------------
@@ -372,33 +373,14 @@ summary() {
     echo -e "SSH_ACCESS := ${SSH_ACCESS}" >> "${CONF_FILE}"
 
 
-    # Handle custom branch specific configurations; disable default if enabled
+    # Handle custom branch specific overrides
     #--------------------------------------------------------------------------
     INCLUDES=""
 
     if [[ -n "${OVERRIDE_SOURCE}" ]]; then
         INCLUDES+="-include ${OVERRIDE_TARGET}"
-    else
-        # Normal configuration processing
-        if [ "${DISABLE_OTHER_REPO}" != 'true' ]; then
-            INCLUDES+="-include example-configs/r${RELEASE}-nrgaway-repos.conf\n"
-        fi
-
-        INCLUDES+="-include custom.conf"
-
-        # Always disable other repo (r?-nrgaway-repo) as it was handled here
-        DISABLE_OTHER_REPO=true
-    fi
-    comment "Other configuration files to be included"
-    echo -e "${INCLUDES}" >> "${CONF_FILE}"
-
-
-    # Undocumented disable repo hamdling
-    #--------------------------------------------------------------------------
-    if [ "${DISABLE_OTHER_REPO}" == 'true' ]; then
-        comment "Found a disable target, most likely in custom.conf, therefore setting" \
-                "r${RELEASE}-nrgaway-repo.conf as disabled."
-        echo -e "DISABLE_OTHER_REPO := ${DISABLE_OTHER_REPO}" >> "${CONF_FILE}"
+        comment "Override configuration files to be included"
+        echo -e "${INCLUDES}" >> "${CONF_FILE}"
     fi
 
     # Disable some COMPONENTS if template only build
@@ -452,6 +434,19 @@ EOF
 
 
 # ------------------------------------------------------------------------------
+# Write release version to configuration file
+# ------------------------------------------------------------------------------
+writeReleaseConfiguration() {
+    cat << EOF > "${CONF_RELEASE}"
+RELEASE := $RELEASE
+
+about::
+	@echo "builder-release.conf"
+EOF
+}
+
+
+# ------------------------------------------------------------------------------
 # Run sections
 # ------------------------------------------------------------------------------
 clear
@@ -474,13 +469,13 @@ installDialog
     fi
 
     #--------------------------------------------------------------------------
-    # Copy the examples/nrgaway.conf file to builder.conf
+    # Soft link 'examples/templates.conf' to 'builder.conf'
     #--------------------------------------------------------------------------
     if ! [ -f "builder.conf" ]; then
         # Choose Qubes version to build (2 or 3)
         chooseVersion && RELEASE=2 || RELEASE=3
-
-        ln -fs "${CONF_MASTER_DIR}/r${RELEASE}-${CONF_MASTER_FILE}" builder.conf
+        ln -fs "${CONF_MASTER_DIR}/${CONF_MASTER_FILE}" builder.conf
+        writeReleaseConfiguration
     else
         # Parse about to determine version
         RELEASE=($(make -B release))
@@ -490,60 +485,63 @@ installDialog
         
         if [ ${RELEASE} != "${XRELEASE}" ]; then
             RELEASE="${XRELEASE}"
-            ln -fs "${CONF_MASTER_DIR}/r${RELEASE}-${CONF_MASTER_FILE}" builder.conf
+            ln -fs "${CONF_MASTER_DIR}/${CONF_MASTER_FILE}" builder.conf
+            writeReleaseConfiguration
         fi
     fi
 
     #--------------------------------------------------------------------------
     # See if a branch specific override configuration file exists
     #--------------------------------------------------------------------------
-    SRC_DIR=./qubes-src
-    PERSONAL_DIR=qubes-tools/.conf  # TODO:  File Browser
     BRANCH="$(git branch | sed -n -e 's/^\* \(.*\)/\1/p')"
-    OVERRIDE_SOURCE="${SRC_DIR}/${PERSONAL_DIR}/r${RELEASE}-${BRANCH}.conf"
     OVERRIDE_TARGET="./override.conf"
-    CONF_OVERRIDE="${CONF_MASTER_DIR}/r${RELEASE}-${CONF_OVERRIDE}"  # nrgaway-repos.conf
 
-    # For reference only; Already set at top
-    # CONF_MASTER_DIR=./example-configs
-    # CONF_MASTER_FILE=setup.conf
-    # CONF_FILE=./setup.conf
-    # CONF_FILE_OLD=./setup.conf.old
-    # CONF_OVERRIDE=nrgaway-repos.conf
+    # Check for generic overrides only if 'overrides.conf' does not exist
+    if [ "X${OVERRIDE_SOURCE}" == "X" ]; then
 
-    if [ ! -d "${SRC_DIR}" ]; then
-        NO_SRC_DIR="${SRC_DIR} does not yet exist.  You may want to re-run setup after getting sources to find other configuration files."
+        # Example: example-configs/r3-feature_branch-overrides.conf
+        if [ -e "${CONF_MASTER_DIR}/r${RELEASE}-${BRANCH}-${CONF_OVERRIDE}" ]; then
+            OVERRIDE_SOURCE="${CONF_MASTER_DIR}/r${RELEASE}-${BRANCH}-${CONF_OVERRIDE}"
+
+        # Example: example-configs/feature_branch-overrides.conf
+        elif [ -e "${CONF_MASTER_DIR}/${BRANCH}-${CONF_OVERRIDE}" ]; then
+            OVERRIDE_SOURCE="${CONF_MASTER_DIR}/${BRANCH}-${CONF_OVERRIDE}"
+
+        # Example: example-configs/overrides.conf
+        elif [ -e "${CONF_MASTER_DIR}/${CONF_OVERRIDE}" ]; then
+            OVERRIDE_SOURCE="${CONF_MASTER_DIR}/${CONF_OVERRIDE}"
+        fi
     fi
 
     # Check if a branch specific user override configuration file is available
     if [ -f "${OVERRIDE_SOURCE}" ] && [[ ! -a "${OVERRIDE_TARGET}" || -h "${OVERRIDE_TARGET}" ]]; then
 
-        # Display 'Use Override Dialog'
-        useOverrideConfiguration || unset OVERRIDE_SOURCE
+        # Don't do anything is configuration file is already linked
+        if [ "$(readlink -m ${OVERRIDE_SOURCE})" != "$(readlink -m ${CONF_OVERRIDE})" ]; then
+            # Display 'Use Override Dialog'
+            useOverrideConfiguration || unset OVERRIDE_SOURCE
 
-        # Soft link the configuration file
-        if [[ -n "${OVERRIDE_SOURCE}" ]]; then
-            ln -sf "${OVERRIDE_SOURCE}" "${OVERRIDE_TARGET}" || unset OVERRIDE_SOURCE
-            
-            # Some type of linking error
-            if [[ -z "${OVERRIDE_SOURCE}" ]]; then
-                message="Could not set link to override configuration file!\n\nUsing defaults."
-                dialog --msgbox "${message}" 8 60
+            # Soft link the configuration file
+            if [[ -n "${OVERRIDE_SOURCE}" ]]; then
+                ln -sf "${OVERRIDE_SOURCE}" "${OVERRIDE_TARGET}" || unset OVERRIDE_SOURCE
+                
+                # Some type of linking error
+                if [[ -z "${OVERRIDE_SOURCE}" ]]; then
+                    message="Could not set link to override configuration file!\n\nUsing defaults."
+                    dialog --msgbox "${message}" 8 60
+                fi
+            # Remove stale override link
+            elif [ -h "${CONF_OVERRIDE}" ]; then
+                rm -f "${CONF_OVERRIDE}"
             fi
         fi
 
-    # TODO:
-    # XXX: think user should be prompted to use override.  Include description of override in 
-    #      override conf file that can be displayed
-    # Use overrides in example-configs directory
-    elif [ -f "${CONF_OVERRIDE}" ] && [[ ! -a "${OVERRIDE_TARGET}" || -h "${OVERRIDE_TARGET}" ]]; then
-        OVERRIDE_SOURCE="${CONF_OVERRIDE}"
-        ln -sf "${OVERRIDE_SOURCE}" "${OVERRIDE_TARGET}" || unset OVERRIDE_SOURCE
-    fi
-
-    # If the overrides target exist, use it even if no other sources were used
-    if [[ -z "${OVERRIDE_SOURCE}" && -e "${OVERRIDE_TARGET}" ]]; then
-        OVERRIDE_SOURCE="${OVERRIDE_TARGET}"
+    else
+        # If a soft-linked override exists, remove it, but don't delete any regular files
+        if [ -h "${CONF_OVERRIDE}" ]; then
+            rm -f "${CONF_OVERRIDE}"
+        fi
+        unset OVERRIDE_SOURCE
     fi
 
     #--------------------------------------------------------------------------
