@@ -179,7 +179,7 @@ chooseVersion() {
 # sshAccessDialog
 # ------------------------------------------------------------------------------
 sshAccessDialog() {
-    if [ "${1}" == "1" ]; then
+    if [ "${1}" == "2" ]; then
         default="yes"
     else
         default="no"
@@ -368,8 +368,8 @@ summary() {
 
     # Set SSH mode on/off; will translate git@ to https:// if disabled
     #--------------------------------------------------------------------------
-    comment "Set SSH_ACCESS to 1 if you can connect to repo via git@ otherwise" \
-            "set to 0 for https:// access."
+    comment "Set SSH_ACCESS to 2 if you can connect to repo via git@ otherwise" \
+            "set to 1 for https:// access."
     echo -e "SSH_ACCESS := ${SSH_ACCESS}" >> "${CONF_FILE}"
 
 
@@ -541,7 +541,12 @@ installDialog
         if [ -h "${CONF_OVERRIDE}" ]; then
             rm -f "${CONF_OVERRIDE}"
         fi
-        unset OVERRIDE_SOURCE
+        
+        if [ -f "${CONF_OVERRIDE}" ]; then
+            OVERRIDE_SOURCE="${CONF_OVERRIDE}"
+        else
+            unset OVERRIDE_SOURCE
+        fi
     fi
 
     #--------------------------------------------------------------------------
@@ -556,7 +561,7 @@ installDialog
 #------------------------------------------------------------------------------
 # Choose if user has git ssh (commit) or http access to private repos
 #------------------------------------------------------------------------------
-sshAccessDialog ${SSH_ACCESS} && SSH_ACCESS=1 || SSH_ACCESS=0
+sshAccessDialog ${SSH_ACCESS} && SSH_ACCESS=2 || SSH_ACCESS=1
 
 #------------------------------------------------------------------------------
 # Choose to build a complete system or templates only

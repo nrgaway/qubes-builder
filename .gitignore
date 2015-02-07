@@ -3,7 +3,6 @@ qubes-src
 builder*.conf
 setup*.conf
 *.conf.old
-*override.conf
 rpm/
 keyrings/
 mnt_archlinux_dvd/
