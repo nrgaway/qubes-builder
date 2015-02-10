@@ -48,6 +48,8 @@
 ### Variables required Makefile.generic
 PACKAGE_LIST = $(DEBIAN_BUILD_DIRS)
 DIST_BUILD_DIR = /home/user
+DEBIAN_DIR = $(DIST_SRC)/$(DEBIAN_BUILD_DIRS)
+DEBIAN_CHROOT_DIR = $(CHROOT_DIR)/$(DIST_SRC)/$(DEBIAN_BUILD_DIRS)
 
 ### Global variables
 DEBIANVERSION=$(DIST)
@@ -61,8 +63,8 @@ DEBIAN_DEPENDENCIES := dpkg-dev debootstrap
 PARSER=./scripts-debian/debian-parser
 
 ifneq (,$(DEBIAN_BUILD_DIRS))
-package_file = $(shell $(PARSER) changelog --package-release-name-full $(ORIG_SRC)/debian/changelog)
-orig_package_file = $(shell $(PARSER) changelog --package-release-name $(ORIG_SRC)/debian/changelog)
+package_file = $(shell $(PARSER) changelog --package-release-name-full $(ORIG_SRC)/$(DEBIAN_BUILD_DIRS)/changelog)
+orig_package_file = $(shell $(PARSER) changelog --package-release-name $(ORIG_SRC)/$(DEBIAN_BUILD_DIRS)/changelog)
 endif
 
 listfiles = awk 'section == "Files:" { print $$5 } /^[A-Z].*.$$/ { section=$$1 }'
@@ -131,10 +133,14 @@ dist-prep:
 		rpm -q $(DEBIAN_DEPENDENCIES) >/dev/null 2>&1 || exit 1; \
 	fi
 
-dist-build-dep:
+dist-build-dep: REPO_DIR=$(PWD)/qubes-rpms-mirror-repo/$(DIST)
+dist-build-dep: 
+	if [ ! -d ${REPO_DIR}/dists ]; then \
+		mkdir -p $(REPO_DIR)/dists; \
+	fi
 	./update-local-repo.sh $(DIST)
 	sudo chroot $(CHROOT_DIR) apt-get update
-	$(PARSER) control --build-depends $(CHROOT_DIR)$(DIST_SRC)/debian/control |\
+	$(PARSER) control --build-depends $(DEBIAN_CHROOT_DIR)/control |\
 		xargs sudo chroot $(CHROOT_DIR) apt-get install -y
 
 dist-package:
@@ -145,11 +151,11 @@ endif
 	rm -rf $(CHROOT_DIR)/$(DIST_SRC)/deb/*
 	rm -rf $(CHROOT_DIR)/$(DIST_SRC)/rpm/*
 	rm -rf $(CHROOT_DIR)/$(DIST_SRC)/pkgs/*
-	cd $(CHROOT_DIR)/$(DIST_SRC); $(PWD)/scripts-debian/debian-changelog.sh
+	cd $(DEBIAN_CHROOT_DIR)/..; $(PWD)/scripts-debian/debian-changelog.sh
 
 	# Break the hardlink
-	cp $(CHROOT_DIR)/$(DIST_SRC)/debian/changelog $(CHROOT_DIR)/$(DIST_SRC)/debian/changelog.copy
-	mv $(CHROOT_DIR)/$(DIST_SRC)/debian/changelog.copy $(CHROOT_DIR)/$(DIST_SRC)/debian/changelog
+	cp $(DEBIAN_CHROOT_DIR)/changelog $(DEBIAN_CHROOT_DIR)/changelog.copy
+	mv $(DEBIAN_CHROOT_DIR)/changelog.copy $(DEBIAN_CHROOT_DIR)/changelog
 
 	echo "Building package in $(DIST_SRC)"
 
@@ -158,19 +164,19 @@ endif
 	# a local one based on repo
 	if [ -n "`make -n -s -C $(SRC_DIR)/$(COMPONENT) dist 2> /dev/null`" ]; then \
 	    sudo $(CHROOT_ENV) chroot $(CHROOT_DIR) su $(RUN_AS_USER) -c 'cd $(DIST_SRC); export LC_ALL=C; make -s dist'; \
-	fi; \
+	fi;
 
-	sudo $(CHROOT_ENV) chroot $(CHROOT_DIR) su $(RUN_AS_USER) -c 'cd $(DIST_SRC); export LC_ALL=C; debchange -l$(DIST) "Build for $(DIST)"; debchange --force-distribution -r -D $(DIST) $(DIST); dpkg-buildpackage -sa -k${SIGN_KEY}'
+	sudo $(CHROOT_ENV) chroot $(CHROOT_DIR) su $(RUN_AS_USER) -c 'cd $(DEBIAN_DIR)/..; export LC_ALL=C; debchange -l$(DIST) "Build for $(DIST)"; debchange --force-distribution -r -D $(DIST) $(DIST); dpkg-buildpackage -sa -k${SIGN_KEY}';
 
 dist-copy-out:
 	mkdir -p $(BUILDER_REPO_DIR)/deb
 	mkdir -p $(ORIG_SRC)/deb/$(DIST)
-	cd $(CHROOT_DIR)/$(DIST_SRC)/..; \
+	cd $(DEBIAN_CHROOT_DIR)/../..; \
 		cp -t $(BUILDER_REPO_DIR)/deb `$(listfiles) $(package_file)*.changes`
-	cp -t $(BUILDER_REPO_DIR)/deb/ $(CHROOT_DIR)/$(DIST_SRC)/../$(package_file)*.changes
-	cd $(CHROOT_DIR)/$(DIST_SRC)/..; \
+	cp -t $(BUILDER_REPO_DIR)/deb/ $(DEBIAN_CHROOT_DIR)/../../$(package_file)*.changes
+	cd $(DEBIAN_CHROOT_DIR)/../..; \
 		mv -t $(PWD)/$(ORIG_SRC)/deb/$(DIST)  `$(listfiles) $(package_file)*.changes`
-	mv -t $(PWD)/$(ORIG_SRC)/deb/$(DIST) $(CHROOT_DIR)/$(DIST_SRC)/../$(package_file)*.changes
+	mv -t $(PWD)/$(ORIG_SRC)/deb/$(DIST) $(DEBIAN_CHROOT_DIR)/../../$(package_file)*.changes
 
 update-repo:
 ifndef UPDATE_REPO

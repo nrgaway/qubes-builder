@@ -13,7 +13,7 @@ Parses some Debian package files
 
 __author__ = 'Jason Mehring'
 __license__ = 'GPLv2 or later'
-__version__ = '0.1'
+__version__ = '0.2'
 
 import os
 import sys
@@ -277,6 +277,7 @@ def parseChangelog(filename, **args):
     '''
     content = getContent(filename)
 
+    #changelog_re = re.compile(r'^(?P<package_name>.*) \((?P<package_version_full>.*)\) (?P<package_distrib>.*); (?P<package_urgency>.*)$' )
     changelog_re = re.compile(r'^(?P<package_name>.*) \((?P<package_version_full>.*)\) (?P<package_distrib>.*); (?P<package_urgency>.*)$' )
     match = changelog_re.match(content.split('\n')[0].strip())
     info = match.groupdict()
@@ -285,9 +286,11 @@ def parseChangelog(filename, **args):
     version_re = re.compile(r'''
         (?P<package_version_epoc> ^[\d]+[:] | )
         (?P<package_version>[\d.]+)
-        (?:[-]?)(?P<package_revision> (?<=[-]).* | )
+        #(?:[-]?)(?P<package_revision> (?<=[-]).* | )
+        (?:[-]?)(?P<package_revision> .* | )
         $
         ''', re.VERBOSE)
+
     match = version_re.match(info['package_version_full'])
     if match:
         version = match.groupdict()
@@ -297,6 +300,9 @@ def parseChangelog(filename, **args):
             info['package_release_name_full'] = '{package_name}_{package_version}-{package_revision}'.format(**info)
         else:
             info['package_release_name_full'] = info['package_release_name']
+
+    #from pprint import pprint
+    #pprint(info)
 
     # Clear out values from info that were not selected so we return only requested
     # info
@@ -329,7 +335,11 @@ def parseControlFile(filename, **args):
         'simple_re':   (r'^{0}:(?P<{1}>.*)$', re.MULTILINE|re.IGNORECASE),
         'folded_re':   (r'',  None),
         'multiline_re':(r'^{0}:(.*?)^[A-Z].*?:', re.MULTILINE|re.DOTALL|re.IGNORECASE),
-        'comma_re':    (r'([a-zA-Z]{1}.+?)[,\s\$]', re.MULTILINE|re.DOTALL|re.IGNORECASE),
+        #'comma_re':    (r'([a-zA-Z]{1}.+?)[,\s\$]', re.MULTILINE|re.DOTALL|re.IGNORECASE),
+
+        #autotools-dev, debhelper (>> 9), dpkg-dev (>= 1.16.0~), lsb-release, python-dev, bcc [i386 amd64], gcc-multilib [i386 amd64], e2fslibs-dev, iasl [i386 amd64], seabios (>= 1.7.4-2~) [i386 amd64], libaio-dev, libfdt-dev [armhf arm64], libglib2.0-dev, liblzma-dev, libncurses5-dev, libyajl-dev, libssl-dev, pkg-config, uuid-dev, zlib1g-dev
+        #'comma_re':    (r'([a-zA-Z]{1}.+?)(?:\[.*?\]|)[,]$', re.MULTILINE|re.DOTALL|re.IGNORECASE),
+        'comma_re':    (r'([a-zA-Z]{1}.+?)(?:\[.*?\]|)(?:,|\s*?$)', re.MULTILINE|re.IGNORECASE),
         }
 
     for key in args.keys():
@@ -357,13 +367,15 @@ def parseControlFile(filename, **args):
 
     if field_re:
         content = getContent(filename)
-
     field = field_re.search(content)
+
     if field and value_re:
         debug(field.groups())
         values = value_re.findall(field.group(1))
         if values:
             debug(values)
+            #if value_re.pattern == regex.get('comma_re')[0]:
+            #    pass
             for value in values:
                 debug(value.rsplit(' ')[0].strip())
                 info.append(value.rsplit(' ')[0].strip())

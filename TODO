@@ -1,8 +1,59 @@
 # vim: set syntax=yaml ts=2 sw=2 sts=2 et :
 
+templates - https://github.com/nrgaway/linux-template-builder.git
+r3-templates - https://github.com/nrgaway/core-agent-linux.git
+r2-templates - https://github.com/nrgaway/core-vchan-xen.git
+r3-templates - https://github.com/nrgaway/core-vchan-xen.git
+r2-templates - https://github.com/nrgaway/gui-agent-linux.git
+r3-templates - https://github.com/nrgaway/gui-agent-linux.git
+r3-templates - https://github.com/nrgaway/linux-utils.git
+r3-templates - https://github.com/nrgaway/vmm-xen.git
+
+
+# Marek says we should look at not using the 'nautilus-actions' package
+# that I added to work with fc21, so we can add that to the TODO list
+fc21 - https://github.com/nrgaway/qubes-app-linux-pdf-converter.git
+
+
+[==- 'qubes-whonix' ============================================================
+[==- defaults: [R2:master, R3:master]
+[===============================================================================
+GIT_URL_qubes_whonix = $(GITHUB_PREFIX)/qubes-whonix.git
+BRANCH_qubes_whonix = $(word $(RELEASE_INDEX), master master)
+
+
+[==- 'whonix-setup-wizard' =====================================================
+[==- defaults: [R2:master, R3:n/a]
+[===============================================================================
+ifneq (,$(findstring wheezy+whonix,$(DISTS_VM)))
+COMPONENTS += whonix-setup-wizard
+TEMPLATE += whonix-setup-wizard
+GIT_URL_whonix_setup_wizard = https://github.com/Whonix/whonix-setup-wizard.git
+BRANCH_whonix_setup_wizard = $(word $(RELEASE_INDEX), master master)
+
+COMPONENTS += python-guimessages
+TEMPLATE += python-guimessages
+GIT_URL_python_guimessages = https://github.com/Whonix/python-guimessages.git
+BRANCH_python_guimessages = $(word $(RELEASE_INDEX), master master)
+endif
+
 ==============================================================================
                            CURRENT TODO LIST
 ==============================================================================
+
+SECURITY:
+  - should we remove vim log
+  - should we disable bash history log
+  - should we make sure updatdb is disabled
+
+NETVM:
+  fc21 netvm does not seem to function.  going to reset again.  seems
+  like interface is not being assigned as eth0 and as enpxxx so may need
+  a udev rule or uninstall biosdevname
+
+linux_utils:  Has to disable exit on warning.  Notes in source
+core-vmm-chan: may also need to disable warning since wheezy uses
+  xs.h instead on xenstore.h
 
 NOTE_TO_SELF:
   dd if=Qubes-20150204-x86_64-DVD.iso of=/dev/xvdi
@@ -47,25 +98,25 @@ gsettings?
 Working:
 --------
 Debian 7/8:
-  + locales working
-  + pulse
-  + proxyvm
-  + flash
-  + new .desktop handler
+ 2- locales working
+ 2- pulse
+ 2- proxyvm
+ 2- flash
+ 2- new .desktop handler
 
 Ubuntu trusty/utopic:
-  + locales working
-  + pulse
-  + proxyvm
-  + flash
-  + new .desktop handler
+ 2- locales working
+ 2- pulse
+ 2- proxyvm
+ 2- flash
+ 2- new .desktop handler
 
 Fedora 21:
-  + locales working
-  + pulse
-  ? proxyvm
-  ? flash -- not installed; will include repo
-  ? new .desktop handler -- should work with code but not yet written to take 
+ 23 locales working
+ 23 pulse
+ ?? proxyvm
+ 23 flash -- not installed; will include repo
+ 23 new .desktop handler -- should work with code but not yet written to take 
     advantage of it.  Will need to be part of a trigger
 
 qubes-builder
