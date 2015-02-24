@@ -3,7 +3,7 @@ ifdef GIT_SUBDIR
 GIT_PREFIX ?= $(GIT_SUBDIR)/
 endif
 BRANCH ?= master
-GIT_BASEURL ?= git://git.qubes-os.org
+GIT_BASEURL ?= https://github.com
 GIT_SUFFIX ?= .git
 DIST_DOM0 ?= fc20
 DISTS_VM ?= fc20
@@ -107,7 +107,7 @@ check-depend:
 		rpm -q $(DEPENDENCIES) >/dev/null 2>&1 || exit 1; \
 	fi
 
-$(filter-out template linux-template-builder kde-dom0 dom0-updates qubes-builder, $(COMPONENTS)): % : %-dom0 %-vm
+$(filter-out template qubes-linux-template-builder kde-dom0 dom0-updates qubes-builder, $(COMPONENTS)): % : %-dom0 %-vm
 
 $(filter-out qubes-vm, $(addsuffix -vm,$(COMPONENTS))) : %-vm : check-depend
 	@$(call check_branch,$*)
@@ -142,7 +142,7 @@ yum-dom0 yum-vm:
 	@true
 
 # Some components requires custom rules
-linux-template-builder: template
+qubes-linux-template-builder: template
 template:: 
 	@for DIST in $(DISTS_VM); do
 	    # Allow template flavors to be declared within the DISTS_VM declaration
@@ -158,13 +158,13 @@ template::
 	    mkdir -p "$$GNUPGHOME"
 	    chmod 700 "$$GNUPGHOME"
 	    export DIST NO_SIGN TEMPLATE_FLAVOR TEMPLATE_OPTIONS
-	    make -s -C $(SRC_DIR)/linux-template-builder prepare-repo-template || exit 1
+	    make -s -C $(SRC_DIR)/qubes-linux-template-builder prepare-repo-template || exit 1
 	    for repo in $(GIT_REPOS); do \
 	        if [ -r $$repo/Makefile.builder ]; then
 				make --no-print-directory -f Makefile.generic \
 					PACKAGE_SET=vm \
 					COMPONENT=`basename $$repo` \
-					UPDATE_REPO=$(CURDIR)/$(SRC_DIR)/linux-template-builder/yum_repo_qubes/$$DIST \
+					UPDATE_REPO=$(CURDIR)/$(SRC_DIR)/qubes-linux-template-builder/yum_repo_qubes/$$DIST \
 					update-repo || exit 1
 	        elif make -C $$repo -n update-repo-template > /dev/null 2> /dev/null; then
 	            make -s -C $$repo update-repo-template || exit 1
@@ -172,10 +172,10 @@ template::
 	    done
 	    if [ "$(VERBOSE)" -eq 0 ]; then
 	        echo "-> Building template $$DIST (logfile: build-logs/template-$$DIST.log)..."
-	        make -s -C $(SRC_DIR)/linux-template-builder rpms > build-logs/template-$$DIST.log 2>&1 || exit 1
+	        make -s -C $(SRC_DIR)/qubes-linux-template-builder rpms > build-logs/template-$$DIST.log 2>&1 || exit 1
 			echo "--> Done."
 	    else
-	        make -s -C $(SRC_DIR)/linux-template-builder rpms || exit 1
+	        make -s -C $(SRC_DIR)/qubes-linux-template-builder rpms || exit 1
 	    fi
 	done
 
@@ -225,9 +225,9 @@ sign-all:
 
 qubes: $(filter-out qubes-builder,$(COMPONENTS))
 
-qubes-dom0: $(addsuffix -dom0,$(filter-out qubes-builder linux-template-builder,$(COMPONENTS)))
+qubes-dom0: $(addsuffix -dom0,$(filter-out qubes-builder qubes-linux-template-builder,$(COMPONENTS)))
 
-qubes-vm: $(addsuffix -vm,$(filter-out qubes-builder linux-template-builder,$(COMPONENTS)))
+qubes-vm: $(addsuffix -vm,$(filter-out qubes-builder qubes-linux-template-builder,$(COMPONENTS)))
 
 qubes-os-iso: get-sources qubes sign-all iso
 
@@ -249,7 +249,7 @@ clean:
 		echo "$$REPO" ;\
 		if ! [ -d $$REPO ]; then \
 			continue; \
-		elif [ $$REPO == "$(SRC_DIR)/linux-template-builder" ]; then \
+		elif [ $$REPO == "$(SRC_DIR)/qubes-linux-template-builder" ]; then \
 			for DIST in $(DISTS_VM); do \
 				DIST=$${DIST%%+*} make -s -C $$REPO clean || exit 1; \
 			done ;\
@@ -276,7 +276,7 @@ iso:
 	@echo "-> Preparing for ISO build..."
 	@make -s -C $(SRC_DIR)/$(INSTALLER_COMPONENT) clean-repos || exit 1
 	@echo "--> Copying RPMs from individual repos..."
-	@for repo in $(filter-out linux-template-builder,$(GIT_REPOS)); do \
+	@for repo in $(filter-out qubes-linux-template-builder,$(GIT_REPOS)); do \
 	    if [ -r $$repo/Makefile.builder ]; then
 			make --no-print-directory -f Makefile.generic \
 				PACKAGE_SET=dom0 \
@@ -294,7 +294,7 @@ iso:
 	@for DIST in $(DISTS_VM); do \
 		DIST=$${DIST%%+*}; \
 		if ! DIST=$$DIST UPDATE_REPO=$(CURDIR)/$(SRC_DIR)/$(INSTALLER_COMPONENT)/yum/qubes-dom0 \
-			make -s -C $(SRC_DIR)/linux-template-builder update-repo-installer ; then \
+			make -s -C $(SRC_DIR)/qubes-linux-template-builder update-repo-installer ; then \
 				echo "make update-repo-installer failed for template dist=$$DIST"; \
 				exit 1; \
 		fi \

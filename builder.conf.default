@@ -5,10 +5,10 @@
 # IMPORTANT: no spaces around "="
 
 # GIT_BASEURL - base url of git repos
-# Default: git://git.qubes-os.org
+# Default: https://github.com
 
 # GIT_PREFIX - whose repo to clone; can be used either to specify subdir
-# ("qubes-r3/"), or real prefix ("qubes-")
+# ("QubesOS/"), or real prefix ("qubes-")
 # Default: no value
 
 # GIT_SUFFIX - git component dir suffix
@@ -66,7 +66,7 @@
 # NO_CHECK - disable signed tag checking - set "1" to disable verify for everything or
 # can be a list of package names separated with spaces
 # Example:
-# NO_CHECK=gui-agent-linux linux-template-builder
+# NO_CHECK=qubes-gui-agent-linux qubes-linux-template-builder
 # Default: no value
 
 # KEYRING_DIR_GIT - use separate keyring dir for git tags verification

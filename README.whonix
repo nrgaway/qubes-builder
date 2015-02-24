@@ -71,17 +71,18 @@ make template || exit 1
 # ==============================================================================
 #
 # - Once build is complete the template rpm can be found in in
-#   '~/qubes-builder/qubes-src/linux-template-builder/rpm/noarch'
+#   '~/qubes-builder/qubes-src/qubes-linux-template-builder/rpm/noarch'
 #
 # On dom0: 
 # ========
-# - A script has been created in 'qubes-src/linux-template-builder/rpm/install-templates.sh' 
-#   that can help transfer the template images over for installation.  Use the 
-#   following command in dom0 to get the script, then once the script has been 
-#   downloaded to dom0 change the permissions of the file so it can be executed
-#   (chmod a+x install-template.sh); then edit or run the file.  It will download,
-#   remove old template and install new one.
+# - A script has been created in 
+#   'qubes-src/qubes-linux-template-builder/rpm/install-templates.sh' that can
+#   help transfer the template images over for installation.  Use the following
+#   command in dom0 to get the script, then once the script has been downloaded
+#   to dom0 change the permissions of the file so it can be executed
+#   (chmod a+x install-template.sh); then edit or run the file.  It will 
+#   download, remove old template and install new one.
 #
-# qvm-run --pass-io development-qubes 'cat /home/user/qubes-builder/qubes-src/linux-template-builder/rpm/install-templates.sh' > install-templates.sh
+# qvm-run --pass-io development-qubes 'cat /home/user/qubes-builder/qubes-src/qubes-linux-template-builder/rpm/install-templates.sh' > install-templates.sh
 # chmod a+x install-templates.sh
 # ./install-templates.sh
