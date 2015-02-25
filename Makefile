@@ -105,7 +105,7 @@ check-depend:
 		rpm -q $(DEPENDENCIES) >/dev/null 2>&1 || exit 1; \
 	fi
 
-$(filter-out template template-builder kde-dom0 dom0-updates builder, $(COMPONENTS)): % : %-dom0 %-vm
+$(filter-out template template-builder kde-dom0 dom0-updates builder, $(COMPONENTS)):: % : %-dom0 %-vm
 
 $(filter-out qubes-vm, $(addsuffix -vm,$(COMPONENTS))) : %-vm : check-depend
 	@$(call check_branch,$*)
@@ -140,7 +140,7 @@ yum-dom0 yum-vm:
 	@true
 
 # Some components requires custom rules
-template linux-template-builder:
+template linux-template-builder::
 	@for DIST in $(DISTS_VM); do
 	    # Allow template flavors to be declared within the DISTS_VM declaration
 	    # <distro>+<template flavor>+<template options>+<template options>...
@@ -351,7 +351,7 @@ show-vtags:
 		echo -n '('; \
 		BRANCH=$(BRANCH); \
 		if [ "$$REPO" == "." ]; then
-			branch_var="BRANCH_qubes_builder"; \
+			branch_var="BRANCH_builder"; \
 		else \
 			branch_var="BRANCH_`basename $${REPO//-/_}`"; \
 		fi; \

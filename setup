@@ -402,7 +402,7 @@ summary() {
     #--------------------------------------------------------------------------
     if [ "$(git rev-parse --abbrev-ref HEAD)" != "master" ]; then
         comment "Filter out qubes-builder if not on master branch to prevent branch being swithced to master"
-        echo -e 'COMPONENTS := $(filter-out qubes-builder, $(COMPONENTS))' >> "${CONF_FILE}"
+        echo -e 'COMPONENTS := $(filter-out builder, $(COMPONENTS))' >> "${CONF_FILE}"
     fi
 
     # Write the file
@@ -473,7 +473,9 @@ function parseMakefiles {
 
     # Remove GIT_PREFIX from builder-release.conf so default prefix can be
     # determined
-    sed -i 's/GIT_PREFIX/#GIT_PREFIX/' "${CONF_RELEASE}"
+    if [ -e "${CONF_RELEASE}" ]; then
+        sed -i 's/GIT_PREFIX/#GIT_PREFIX/' "${CONF_RELEASE}"
+    fi
     DEFAULT_PREFIX="$(GET_VAR=GIT_PREFIX make get-var)"
 
     #--------------------------------------------------------------------------
@@ -580,11 +582,16 @@ function cleanup() {
     trap - ERR EXIT
     trap
 
-    # Replcae original setup.conf
-    mv -f setup.conf.old setup.conf || true
+    # Restore original setup.conf
+    if [ -e  "${CONF_FILE_OLD}" ]; then
+        mv -f "${CONF_FILE_OLD}" "${CONF_FILE}" || true
+    fi
 
-    # Re-enable original GIT_PREFIX
-    sed -i 's/#GIT_PREFIX/GIT_PREFIX/' "${CONF_RELEASE}"
+    # Restore original GIT_PREFIX
+    if [ -e "${CONF_RELEASE}" ]; then
+        sed -i 's/#GIT_PREFIX/GIT_PREFIX/' "${CONF_RELEASE}"
+    fi
+
     exit $errval
 }
 
