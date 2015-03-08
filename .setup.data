@@ -20,12 +20,6 @@ read -r -d '' KEYS[0x5A4C6DAD] <<'EOF' || true
 EOF
 read -r -d '' REPOS[0] <<'EOF' || true
 (
-    [description]="Unstable - Nrgaway's Personal Repo"
-    [prefix]="nrgaway/qubes-"
-)
-EOF
-read -r -d '' REPOS[0] <<'EOF' || true
-(
     [description]="Unstable - Bleeding Edge Development"
     [prefix]="marmarek/qubes-"
 )
@@ -42,3 +36,9 @@ EOF
 #    [prefix]="wojo/qubes-"
 #)
 #EOF
+read -r -d '' REPOS[3] <<'EOF' || true
+(
+    [description]="Unstable - Nrgaway's Personal Repo"
+    [prefix]="nrgaway/qubes-"
+)
+EOF
