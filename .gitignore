@@ -19,3 +19,5 @@ qubes-rpms-mirror-repo/repodata
 qubes-rpms-mirror-repo/*/repodata/*
 qubes-rpms-mirror-repo/*/dists
 qubes-rpms-mirror-repo/*/deb
+
+*.py?
