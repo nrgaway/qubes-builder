@@ -10,3 +10,5 @@ keyrings/
 rpm/
 windows-prereqs/
 windows-sources.img
+
+*.py?
