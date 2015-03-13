@@ -6,14 +6,19 @@
 # Copyright (C) 2015  Jason Mehring
 #
 # License: GPL-2+
+#
 # ------------------------------------------------------------------------------
 # Install 'dialog' program if it does not yet exist
 # ------------------------------------------------------------------------------
 #
-#              SH...... pip install sh
+#               SH...... pip install sh
+#               https://amoffat.github.io/sh
 #
 '''
-# The Makefile configuration file must contain these two additonal targets:
+# The Makefile configuration file must contain these additonal targets:
+
+# SRC_DIR is the relative path from the directory where your Makefile resides
+SRC_DIR := qubes-src
 
 # Returns variable value
 # Example usage: GET_VAR=DISTS_VM make get-var
@@ -24,15 +29,27 @@ get-var::
 
 # Each included Makefile configuration sould also include and about to be
 # able to identify which configuration files are being used
+.PHONY: about
 about::
 	@echo "extended-rules.conf"
+
+# To automatically add remotes and track a remote branch also add the `TRACK_REPO`
+# variable to your Makefile configuration using the sample structure listed below:
+TRACK_REPO :=
+TRACK_REPO += builder-fedora:master:marmarek:master
+TRACK_REPO += builder-fedora:feature_branch:marmarek:master
+TRACK_REPO += builder-debian:master:marmarek:master
+TRACK_REPO += <local repo name>:<local branch>:<remote repo>:<remote branch>
+
+# GIT_REMOTE_BASEURL
+# The default remote GIT_REMOTE_BASEURL is `https://github.com`.  Set this variable
+# to something else if needed within the Makefile configuration.
 '''
 
 from __future__ import unicode_literals
 
 import sys
 import os
-import subprocess
 import locale
 import argparse
 
@@ -90,29 +107,90 @@ def dialog_release(release):
     elif result == dialog.ESC:
         close()
 
+
 class Makefile:
     '''
     '''
-    def __init__(self, makefile):
-        ''''''
-        self.makefile = makefile
+    GIT_REMOTE_BASEURL = 'https://github.com/'
 
-    def get_var(self, var):
-        cmd = 'make --silent --always-make -C {0} get-var'.format(self.makefile)
+    def __init__(self, directory):
+        ''''''
+        self.options = {}
+        self.directory = directory
+        self.src_dir = os.path.join(directory, self.get_var('SRC_DIR').strip())
+
+        git_baseurl = self.get_var('GIT_REMOTE_BASEURL').strip()
+        self.git_baseurl = git_baseurl if git_baseurl else self.GIT_REMOTE_BASEURL
+
+    def get_var_object(self, var):
+        '''
+        Returns the raw sh output object which contains many attrs like stderr,
+        etc.
+        '''
+        from sh import make
         env = os.environ.copy()
         env['GET_VAR'] = var
-        return subprocess.check_output(cmd.split(), env=env)
+        cmd = '--silent --always-make -C {0} get-var'.format(self.directory)
+        return make(cmd.split(), _env=env)
+
+    def get_var(self, var):
+        return self.get_var_object(var).stdout
 
 
-def remotes(makefile_directory):
-    print 'Remotes...'
+def contains(expressions, text):
+    for expression in expressions:
+        #if re.search(r'(?sm){0}'.format(expression), text):
+        #    return True
+        if expression in text:
+            return True
+    return False
+
+
+def out(path, sh_result):
+    print '==============================================================='
+    print path
+    print(sh_result.stdout)
+    print
+
+
+def walk(function, makefile_directory, fetch=False):
+    print 'Walk...'
     makefile = Makefile(makefile_directory)
-    src_dir = os.path.join(makefile_directory, makefile.get_var('SRC_DIR').strip())
+    dir_list = os.listdir(makefile.src_dir)
+    cache = []
+
+    for path in dir_list:
+        print 'Checking status for: ', path
+        path = os.path.join(makefile.src_dir, path)
+        if not os.path.isdir(path):
+            continue
+
+        if path in cache:
+            continue
+        else:
+            cache.append(path)
+
+        git = sh.git.bake(_cwd=path)
+
+        # Fetch
+        if fetch:
+            git.fetch('--all')
+
+        function(path, makefile)
+
+
+def remotes(path, makefile):
     track_list = makefile.get_var('TRACK_REPO').split()
+    if not track_list:
+        return
 
     for track_item in track_list:
-        path, branch, remote, remote_branch = track_item.split(':')
-        path = os.path.abspath(os.path.join(src_dir, path))
+        track_path, branch, remote, remote_branch = track_item.split(':')
+        track_path = os.path.abspath(os.path.join(makefile.src_dir, track_path))
+
+        if track_path != path:
+            continue
+
         print 'Checking remotes for: ', path
 
         if not os.path.exists(path) or not os.path.isdir(path):
@@ -120,14 +198,12 @@ def remotes(makefile_directory):
 
         git = sh.git.bake(_cwd=path)
 
-        #
         # Add git remote...
-        #
         origin = git.remote('-v').stdout
         match = re.search(r'origin[\s]+.*[/](.+)\s+\(fetch\).*', origin)
 
         # XXX: Allowing exception to be raised if no match so was can deal with implementing it later
-        remote_url = 'https://github.com/{0}/{1}'.format(remote, match.group(1).strip())
+        remote_url = '{0}{1}/{2}'.format(makefile.git_baseurl, remote, match.group(1).strip())
 
         if not re.search(r'(?m){0}'.format(remote_url), origin):
             print 'Adding remote {0}: {1}'.format(remote, remote_url)
@@ -136,154 +212,83 @@ def remotes(makefile_directory):
             # Fetch
             print git.fetch('--all')
 
-        #
         # Watch remote branch
-        #
         try:
             print git.branch('-u', '{0}/{1}'.format(remote, remote_branch), branch)
         except sh.ErrorReturnCode:
             pass
 
-
-def status(makefile_directory, fetch=False):
-    print 'Status...'
-    makefile = Makefile(makefile_directory)
-    src_dir = os.path.join(makefile_directory, makefile.get_var('SRC_DIR').strip())
-    dir_list = os.listdir(src_dir)
-    cache = []
-
-    for path in dir_list:
-        print 'Checking status for: ', path
-        path = os.path.join(src_dir, path)
-        if not os.path.isdir(path):
-            continue
-
-        if path in cache:
-            continue
-        else:
-            cache.append(path)
-
-        def out(path, sh_result):
-            print '==============================================================='
-            print path
-            print(sh_result.stdout)
-            print
-
-        git = sh.git.bake(_cwd=path)
-
-        # Fetch
-        if fetch:
-            git.fetch('--all')
-
-        # Status
-        result = git.status()
-
-        ignore = [
-            'HEAD detached',
-            'Not currently on any branch',
-            ]
-
-        report = [
-            'Your branch is ahead',
-            'Your branch is behind',
-            'Changes not staged for commit',
-            'Untracked files',
-            ]
-
-        def contains(expressions, text):
-            for expression in expressions:
-                #if re.search(r'(?sm){0}'.format(expression), text):
-                #    return True
-                if expression in text:
-                    return True
-            return False
-
-        if contains(ignore, result.stdout):
-            continue
-        if contains(report, result.stdout):
-            out(path, result)
+        # Only need to match one path; break or return
+        break
 
 
-def rebase(makefile_directory):
-    print 'Rebase...'
-    makefile = Makefile(makefile_directory)
-    src_dir = os.path.join(makefile_directory, makefile.get_var('SRC_DIR').strip())
-    dir_list = os.listdir(src_dir)
-    cache = []
+def status(path, makefile):
+    ignore = [
+        'HEAD detached',
+        'Not currently on any branch',
+        ]
 
-    for path in dir_list:
-        print 'Checking rebase status for: ', path
-        path = os.path.join(src_dir, path)
-        if not os.path.isdir(path):
-            continue
+    report = [
+        'Your branch is ahead',
+        'Your branch is behind',
+        'Changes not staged for commit',
+        'Untracked files',
+        ]
 
-        if path in cache:
-            continue
-        else:
-            cache.append(path)
+    git = sh.git.bake(_cwd=path)
 
-        def out(path, sh_result):
-            print '==============================================================='
-            print path
-            print(sh_result.stdout)
-            print
+    # Status
+    result = git.status()
 
-        git = sh.git.bake(_cwd=path)
+    if contains(ignore, result.stdout):
+        return
+    if contains(report, result.stdout):
+        out(path, result)
 
-        # Fetch
-        git.fetch('--all')
 
-        # Status
-        result = git.status()
+def rebase(path, makefile):
+    ignore = [
+        'Your branch is ahead',
+        'Changes not staged for commit',
+        'HEAD detached',
+        'Not currently on any branch',
+        ]
 
-        ignore = [
-            'Your branch is ahead',
-            'Changes not staged for commit',
-            'HEAD detached',
-            'Not currently on any branch',
-            ]
+    git = sh.git.bake(_cwd=path)
 
-        def contains(expressions, text):
-            for expression in expressions:
-                #if re.search(r'(?sm){0}'.format(expression), text):
-                #    return True
-                if expression in text:
-                    return True
-            return False
+    # Status
+    result = git.status()
+    if contains(ignore, result.stdout):
+        return
 
-        if contains(ignore, result.stdout):
-            continue
-
-        match = re.search(r'(?sm)(Your branch is behind).*\'(?P<remote_branch>.*)\'.*(and can be fast-forwarded)', result.stdout)
-        if match:
-            branch = git('rev-parse', '--abbrev-ref', 'HEAD').stdout.strip()
-            remote_branch = match.groupdict()['remote_branch']
-            print branch
-            print remote_branch
-            print result.stdout
-            print git.rebase(branch, remote_branch)
+    match = re.search(r'(?sm)(Your branch is behind).*\'(?P<remote_branch>.*)\'.*(and can be fast-forwarded)', result.stdout)
+    if match:
+        branch = git('rev-parse', '--abbrev-ref', 'HEAD').stdout.strip()
+        remote_branch = match.groupdict()['remote_branch']
+        print branch
+        print remote_branch
+        print result.stdout
+        print git.rebase(branch, remote_branch)
 
 
 def main(argv):
     parser = argparse.ArgumentParser()
-    #subparsers = parser.add_subparsers(dest='subparser', help='commands')
 
-    parser.add_argument('-C', '--makefile', dest='makefile_directory', action='store_true', default=os.getcwd(),
-                             help='Makefile configuration file path')
-    parser.add_argument('--status', action='store_true',
-                             help='Display git status of all repos')
+    parser.add_argument('-C', '--makefile', dest='makefile_directory', action='store', default=os.getcwd(),
+            help='Makefile configuration file path')
     parser.add_argument('--nofetch', dest='fetch', action='store_false', default=True,
-                             help='Fetch repos first')
-    parser.add_argument('--rebase', action='store_true', default=False,
-                             help='Rebase repos')
-    parser.add_argument('--remotes', action='store_true',
-                             help='Add remotes to git repos selected in Makefile')
+            help='Do Not fetch repos before the selected mode is run')
+
+    mode = parser.add_argument_group('mode')
+    mode.add_argument('--status', action='store_true',
+            help='Display git status of all repos')
+    mode.add_argument('--rebase', action='store_true', default=False,
+            help='Rebase repos')
+    mode.add_argument('--remotes', action='store_true',
+            help='Add remotes to git repos selected in Makefile')
 
     args = vars(parser.parse_args())
-
-    print 'Starting...'
-    from pprint import pprint
-    pprint(args)
+    run_list = []
 
     #if args['dialog_release']:
     #    release = dialog_release(args['dialog_release'])
@@ -293,16 +298,24 @@ def main(argv):
 
     # Add Remotes if they do not exist
     if args['remotes']:
-        remotes(makefile_directory)
+        walk(remotes, makefile_directory, fetch=args['fetch'])
+        run_list.append('remotes')
 
     # Display status only if working directory dirty or branch / remote have
     # different commits available to pull / push
     if args['status']:
-        status(makefile_directory, fetch=args['fetch'])
+        walk(status, makefile_directory, fetch=args['fetch'])
+        run_list.append('status')
 
     # Attempt auto rebase
     if args['rebase']:
-        rebase(makefile_directory)
+        walk(rebase, makefile_directory, fetch=args['fetch'])
+        run_list.append('rebase')
+
+    # Print usage help if no modes were provided
+    if not run_list:
+        print parser.format_help()
+
 
 if __name__ == '__main__':
     main(sys.argv)
