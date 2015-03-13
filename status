@@ -1,0 +1,211 @@
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+
+# status --- A Git Repo Management Tool
+#
+# Copyright (C) 2015  Jason Mehring
+#
+# License: GPL-2+
+# ------------------------------------------------------------------------------
+# Install 'dialog' program if it does not yet exist
+# ------------------------------------------------------------------------------
+#
+#              SH...... pip install sh
+#
+'''
+# The Makefile configuration file must contain these two additonal targets:
+
+# Returns variable value
+# Example usage: GET_VAR=DISTS_VM make get-var
+.PHONY: get-var
+get-var::
+	@GET_VAR=$${!GET_VAR}; \
+	echo "$${GET_VAR}"
+
+# Each included Makefile configuration sould also include and about to be
+# able to identify which configuration files are being used
+about::
+	@echo "extended-rules.conf"
+'''
+
+from __future__ import unicode_literals
+
+import sys
+import os
+import subprocess
+import locale
+import argparse
+
+from textwrap import dedent
+
+BASE_DIR = os.getcwd()
+LIBS_DIR =  os.path.join(BASE_DIR, 'libs')
+if os.path.exists(LIBS_DIR) and os.path.isdir(LIBS_DIR):
+    if LIBS_DIR not in sys.path:
+        sys.path.insert(1, LIBS_DIR)
+
+from dialog import Dialog
+
+import sh
+import re
+
+# This is almost always a good thing to do at the beginning of your programs.
+locale.setlocale(locale.LC_ALL, '')
+
+# Initialize a dialog.Dialog instance
+dialog = Dialog(dialog='dialog')
+dialog.set_background_title("Qubes Git Repo Management Tool")
+
+
+def close():
+    '''Function to exit.  Maybe restoring some files before exiting.
+    '''
+    sys.exit()
+
+
+def dialog_release(release):
+    release = str(release)
+    default_button = 'yes' if release == '2' else 'no'
+
+    result = dialog.yesno(**{
+        'title':  'Choose Qubes Version',
+        'width': 60,
+        'height': 8,
+
+        'yes_label': 'Release 2',
+        'no_label': 'Release 3',
+        'default_button': default_button,
+
+        'text': dedent('''\
+        Choose which version of Qubes you wish to build.
+
+        Valid options are either the stable release 2 or development release 3 version.
+        '''),
+    })
+
+    if result == dialog.OK:
+        return '2'
+    elif result == dialog.CANCEL:
+        return '3'
+    elif result == dialog.ESC:
+        close()
+
+class Makefile:
+    '''
+    '''
+    def __init__(self, makefile):
+        ''''''
+        self.makefile = makefile
+
+    def get_var(self, var):
+        cmd = 'make --silent --always-make -C {0} get-var'.format(self.makefile)
+        env = os.environ.copy()
+        env['GET_VAR'] = var
+        return subprocess.check_output(cmd.split(), env=env)
+
+
+def add_remote(makefile_directory):
+    makefile = Makefile(makefile_directory)
+    src_dir = os.path.join(makefile_directory, makefile.get_var('SRC_DIR').strip())
+    track_list = makefile.get_var('TRACK_REPO').split()
+
+    for track_item in track_list:
+        path, branch, remote, remote_branch = track_item.split(':')
+        path = os.path.abspath(os.path.join(src_dir, path))
+
+        if not os.path.exists(path) or not os.path.isdir(path):
+            continue
+
+        def out(sh_result):
+            print '==============================================================='
+            print path
+            #print branch
+            #print remote
+            #print remote_branch
+            print(sh_result.stdout)
+            print
+
+
+def git_status(makefile_directory, fetch=False):
+    makefile = Makefile(makefile_directory)
+    src_dir = os.path.join(makefile_directory, makefile.get_var('SRC_DIR').strip())
+    dir_list = os.listdir(src_dir)
+    cache = []
+
+    for path in dir_list:
+        path = os.path.join(src_dir, path)
+        if not os.path.isdir(path):
+            continue
+
+        if path in cache:
+            continue
+        else:
+            cache.append(path)
+
+        def out(path, sh_result):
+            print '==============================================================='
+            print path
+            print(sh_result.stdout)
+            print
+
+        git = sh.git.bake(_cwd=path)
+
+        # Fetch
+        if fetch:
+            git.fetch('--all')
+
+        # Status
+        result = git.status()
+
+        ignore = [
+            'HEAD detached',
+            'Not currently on any branch',
+            ]
+
+        report = [
+            'Your branch is ahead',
+            'Your branch is behind',
+            'Changes not staged for commit',
+            'Untracked files',
+            ]
+
+        def contains(expressions, text):
+            for expression in expressions:
+                #if (re.search(r'(?sm){0}'.format(expression), text):
+                #    return True
+                if expression in text:
+                    return True
+            return False
+
+        if contains(ignore, result.stdout):
+            continue
+        if contains(report, result.stdout):
+            out(path, result)
+
+
+def main(argv):
+    #parser = argparse.ArgumentParser()
+    #subparsers = parser.add_subparsers(dest='subparser', help='commands')
+
+    #parser.add_argument( '--dialog-release',
+    #                     action='store',
+    #                     default='3',
+    #                     help='Display the Choose Release Dialog'
+    #                     )
+
+    #args = vars(parser.parse_args())
+
+    #if args['dialog_release']:
+    #    release = dialog_release(args['dialog_release'])
+    #    sys.exit(str(release))
+
+    # Update all repos
+    # Add Remote if they do not exist
+    # status if they differ
+    makefile = os.getcwd()
+
+    git_status(makefile, fetch=False)
+
+if __name__ == '__main__':
+    main(sys.argv)
+    sys.exit(0)
