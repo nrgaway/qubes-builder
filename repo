@@ -32,17 +32,21 @@ get-var::
 about::
 	@echo "extended-rules.conf"
 
-# To automatically add remotes and track a remote branch also add the `TRACK_REPO`
+# To automatically add remotes and track a remote branch also add the `REPO_TRACK`
 # variable to your Makefile configuration using the sample structure listed below:
-TRACK_REPO :=
-TRACK_REPO += builder-fedora:master:marmarek:master
-TRACK_REPO += builder-fedora:feature_branch:marmarek:master
-TRACK_REPO += builder-debian:master:marmarek:master
-TRACK_REPO += <local repo name>:<local branch>:<remote repo>:<remote branch>
+REPO_TRACK :=
+REPO_TRACK += builder-fedora:master:marmarek:master
+REPO_TRACK += builder-fedora:feature_branch:marmarek:master
+REPO_TRACK += builder-debian:master:marmarek:master
+REPO_TRACK += <local repo name>:<local branch>:<remote repo>:<remote branch>
 
 # GIT_REMOTE_BASEURL
 # The default remote GIT_REMOTE_BASEURL is `https://github.com`.  Set this variable
 # to something else if needed within the Makefile configuration.
+
+# REPO_IGNORE
+# list of repo paths to ignore when --ignore flag is passed if the repos are not
+# listed after the --ignore flag
 '''
 
 from __future__ import unicode_literals
@@ -76,6 +80,7 @@ class Makefile:
         self.options = {}
         self.directory = os.path.abspath(directory)
         self.src_dir = os.path.join(directory, self.get_var('SRC_DIR').strip())
+        self.ignore = self.get_var('REPO_IGNORE').strip().split()
 
         git_baseurl = self.get_var('GIT_REMOTE_BASEURL').strip()
         self.git_baseurl = git_baseurl if git_baseurl else self.GIT_REMOTE_BASEURL
@@ -98,27 +103,30 @@ class Makefile:
 def contains(expressions, text):
     for expression in expressions:
         if re.search(r'(?sm){0}'.format(expression), text):
-            return True
+            return expression
         #if expression in text:
-        #    return True
+        #    return expression
     return False
 
 
-def out(path, sh_result):
+def out(path, sh_result, color=None):
     ansi = ANSIColor()
+    if not color:
+        color = ansi['red']
+    ansi['color'] = color
+
     git = sh.git.bake(_cwd=path)
     branch = git('rev-parse', '--abbrev-ref', 'HEAD').stdout.strip()
     print
     print '================================================================================'
     print '{ansi[bold]}{ansi[blue]}{0}{ansi[normal]} [{1}]'.format(path, branch, ansi=ansi)
     print '================================================================================'
-    print '{ansi[red]}{0}{ansi[normal]}'.format(sh_result.stdout.strip(), ansi=ansi)
+    print '{ansi[color]}{0}{ansi[normal]}'.format(sh_result.stdout.strip(), ansi=ansi)
     print
 
 
 def walk(function, **kwargs):
     makefile_directory = kwargs['makefile_directory']
-    fetch = kwargs['fetch']
 
     dirs = []
     cache = []
@@ -135,6 +143,15 @@ def walk(function, **kwargs):
         if kwargs['include_basedir'] and makefile_directory not in dirs:
             dirs.append(makefile.directory)
 
+    # Remove ignored repos from dirs
+    if kwargs['ignore'] is not None:
+        for index, path in enumerate(kwargs['ignore'] + makefile.ignore):
+            for path in [path, os.path.join(makefile.src_dir, path)]:
+                if os.path.exists(path) and os.path.isdir(path) and os.path.abspath(path) in dirs:
+                    while path in dirs:
+                        dirs.remove(path)
+                    break
+
     for path in dirs:
         if not os.path.isdir(path):
             continue
@@ -147,15 +164,22 @@ def walk(function, **kwargs):
         git = sh.git.bake(_cwd=path)
 
         # Fetch
-        if fetch:
-            print 'Fetching for: ', path
-            git.fetch('--all')
+        fetch(path, makefile, **kwargs)
 
-        function(path, makefile)
+        # Do not re-call fetch is mode is fetch
+        if function != fetch:
+            function(path, makefile, **kwargs)
 
 
-def remotes(path, makefile):
-    track_list = makefile.get_var('TRACK_REPO').split()
+def fetch(path, makefile, **kwargs):
+    git = sh.git.bake(_cwd=path)
+    if kwargs['mode'] == 'fetch' or kwargs['fetch']:
+        print 'Fetching for: ', path
+        git.fetch('--all')
+
+
+def remotes(path, makefile, **kwargs):
+    track_list = makefile.get_var('REPO_TRACK').split()
     if not track_list:
         return
 
@@ -198,7 +222,8 @@ def remotes(path, makefile):
             pass
 
 
-def status(path, makefile):
+def status(path, makefile, **kwargs):
+    ansi =  ANSIColor()
     git = sh.git.bake(_cwd=path)
 
     branch = git('rev-parse', '--abbrev-ref', 'HEAD').stdout.strip()
@@ -210,24 +235,27 @@ def status(path, makefile):
     #    'Not currently on any branch',
     #    ]
 
-    report = [
-        'detached',
-        'diverged',
-        'Your branch is ahead',
-        'Your branch is behind',
-        'Changes not staged for commit',
-        'Untracked files',
-        ]
+    # expression : color (None uses default color)
+    report = {
+        'detached': None,
+        'diverged': None,
+        'Your branch is ahead': ansi['bold']+ansi['green'],
+        'Your branch is behind': None,
+        'Changes not staged for commit': None,
+        'Untracked files': None,
+        }
 
     result = git.status()
 
     if contains(ignore, result.stdout):
         return
-    if contains(report, result.stdout):
-        out(path, result)
+
+    expression = contains(report, result.stdout)
+    if expression:
+        out(path, result, color=report[expression])
 
 
-def rebase(path, makefile):
+def rebase(path, makefile, **kwargs):
     ignore = [
         'detached',
         'Your branch is ahead',
@@ -255,10 +283,10 @@ def rebase(path, makefile):
         result = git.rebase(remote_branch)
         print '{ansi[red]}{0}{ansi[normal]}'.format(result, ansi=ansi)
 
-def test(path, makefile):
-    track_list = makefile.get_var('TRACK_REPO').split()
+def test(path, makefile, **kwargs):
+    track_list = makefile.get_var('REPO_TRACK').split()
     if not track_list:
-        print 'TRACK_REPO not found in configuration files'
+        print 'REPO_TRACK not found in configuration files'
         return
 
     ansi = ANSIColor()
@@ -285,20 +313,32 @@ def main(argv):
     # --- Modes -------------------------------------------------------------------
     subparsers = parser.add_subparsers(dest='mode', help='commands')
 
+    fetch = subparsers.add_parser('fetch',
+            help='Fetch all repos')
+    fetch.add_argument('dirs', action='store', default=[], nargs='*')
+    fetch.add_argument('--ignore', nargs='*', action='store',
+            help='List of repos to ignore')
+
     status = subparsers.add_parser('status',
             help='Display git status of all repos')
     status.add_argument('dirs', action='store', default=[], nargs='*')
+    status.add_argument('--ignore', nargs='*', action='store',
+            help='List of repos to ignore')
 
     rebase = subparsers.add_parser('rebase',
             help='Rebase repos')
     rebase.add_argument('dirs', action='store', default=[], nargs='*')
+    rebase.add_argument('--ignore', nargs='*', action='store',
+            help='List of repos to ignore')
 
     remotes = subparsers.add_parser('remotes',
             help='Add remotes to git repos selected in Makefile')
     remotes.add_argument('dirs', action='store', default=[], nargs='*')
+    remotes.add_argument('--ignore', nargs='*', action='store',
+            help='List of repos to ignore')
 
     test = subparsers.add_parser('test',
-            help='Test TRACK_REPO to make sure paths exist')
+            help='Test REPO_TRACK to make sure paths exist')
     test.add_argument('dirs', action='store', default=[], nargs='*')
 
     # --- Optionals ---------------------------------------------------------------
@@ -316,7 +356,7 @@ def main(argv):
     run_list = []
 
     # Dispatch mode
-    if args.mode in ['status', 'remotes', 'rebase', 'test']:
+    if args.mode in ['fetch', 'status', 'remotes', 'rebase', 'test']:
         print 'DISPATCHING: ', args.mode
         function = globals()[args.mode]
         walk(function, **vars(args))
