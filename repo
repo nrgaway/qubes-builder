@@ -144,7 +144,7 @@ def walk(function, **kwargs):
             dirs.append(makefile.directory)
 
     # Remove ignored repos from dirs
-    if kwargs['ignore'] is not None:
+    if 'ignore' in kwargs and kwargs['ignore'] is not None:
         for index, path in enumerate(kwargs['ignore'] + makefile.ignore):
             for path in [path, os.path.join(makefile.src_dir, path)]:
                 if os.path.exists(path) and os.path.isdir(path) and os.path.abspath(path) in dirs:
@@ -283,7 +283,35 @@ def rebase(path, makefile, **kwargs):
         result = git.rebase(remote_branch)
         print '{ansi[red]}{0}{ansi[normal]}'.format(result, ansi=ansi)
 
-def test(path, makefile, **kwargs):
+
+def push(path, makefile, **kwargs):
+    ignore = [
+        'detached',
+        'Your branch is ahead',
+        'Changes not staged for commit',
+        'Not currently on any branch',
+        ]
+
+    ansi = ANSIColor()
+    git = sh.git.bake(_cwd=path)
+
+    result = git.status()
+    if contains(ignore, result.stdout):
+        return
+
+    remote = 'origin'
+    branch = git('rev-parse', '--abbrev-ref', 'HEAD').stdout.strip()
+
+    print '================================================================================'
+    print '{ansi[bold]}{ansi[blue]}{0}{ansi[normal]} [{1}]'.format(path, branch, ansi=ansi)
+    print '================================================================================'
+    print '{ansi[red]}Attempting to push local branch {0} to {1}/{2}{ansi[normal]}'.format(branch, remote, branch, ansi=ansi)
+    print '{ansi[white]}{0}{ansi[normal]}'.format(result.stdout, ansi=ansi)
+    result = git.push('--tags', remote, branch)
+    print '{ansi[red]}{0}{ansi[normal]}'.format(result, ansi=ansi)
+
+
+def tracking(path, makefile, **kwargs):
     track_list = makefile.get_var('REPO_TRACK').split()
     if not track_list:
         print 'REPO_TRACK not found in configuration files'
@@ -337,9 +365,15 @@ def main(argv):
     remotes.add_argument('--ignore', nargs='*', action='store',
             help='List of repos to ignore')
 
-    test = subparsers.add_parser('test',
+    push = subparsers.add_parser('push',
+            help='Push repos to origin')
+    push.add_argument('dirs', action='store', default=[], nargs='*')
+    push.add_argument('--ignore', nargs='*', action='store',
+            help='List of repos to ignore')
+
+    tracking = subparsers.add_parser('tracking',
             help='Test REPO_TRACK to make sure paths exist')
-    test.add_argument('dirs', action='store', default=[], nargs='*')
+    tracking.add_argument('dirs', action='store', default=[], nargs='*')
 
     # --- Optionals ---------------------------------------------------------------
     parser.add_argument('-C', '--makefile', dest='makefile_directory',
@@ -356,7 +390,7 @@ def main(argv):
     run_list = []
 
     # Dispatch mode
-    if args.mode in ['fetch', 'status', 'remotes', 'rebase', 'test']:
+    if args.mode in ['fetch', 'status', 'remotes', 'rebase', 'push', 'tracking']:
         print 'DISPATCHING: ', args.mode
         function = globals()[args.mode]
         walk(function, **vars(args))
