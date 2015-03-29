@@ -17,6 +17,7 @@ import locale
 import codecs
 import argparse
 import collections
+import shutil
 
 import sh
 
@@ -27,6 +28,20 @@ from ansi import ANSIColor
 locale.setlocale(locale.LC_ALL, '')
 DIALOG = 'dialog'
 
+try:
+    from textwrap import indent
+except ImportError:
+    def indent(text, prefix, predicate=None):
+        l = []
+
+        for line in text.splitlines(True):
+            if (callable(predicate) and predicate(line)) \
+                    or (not callable(predicate) and predicate) \
+                    or (predicate is None and line.strip()):
+                line = prefix + line
+            l.append(line)
+
+        return ''.join(l)
 
 def close(message=None):
     '''Function to exit.  Maybe restoring some files before exiting.
@@ -41,6 +56,15 @@ def close(message=None):
         if isinstance(message, collections.Mapping):
             info.update(message)
         dialog.infobox(**info)
+
+    # Restore original setup.conf
+    if os.path.exists(Config.get_filename('conf_file_old')):
+        shutil.move(Config.get_filename('conf_file_old'), Config.get_filename('conf_file'))
+
+    # Restore original GIT_PREFIX
+    if os.path.exists(Config.get_filename('conf_release')):
+        sh.sed('-i', 's/#GIT_PREFIX/GIT_PREFIX/', Config.get_filename('conf_release'))
+
     sys.exit()
 
 
@@ -98,7 +122,7 @@ dialog = Dialog(dialog='dialog')
 dialog.set_background_title("Qubes Builder Configuration Utility")
 
 
-def path_link(source, target):
+def soft_link(source, target):
     '''Attempt to soft-link a file.  Exit with message on failure.
     '''
     try:
@@ -123,15 +147,13 @@ def dialog_release(release):
     release = str(release)
     default_button = 'yes' if release == '2' else 'no'
 
-    result = dialog.yesno(**{
+    code = dialog.yesno(**{
         'title':  'Choose Qubes Version',
         'width': 60,
         'height': 8,
-
         'yes_label': 'Release 2',
         'no_label': 'Release 3',
         'default_button': default_button,
-
         'text': dedent('''\
         Choose which version of Qubes you wish to build.
 
@@ -139,13 +161,158 @@ def dialog_release(release):
         '''),
     })
 
-    if result == dialog.OK:
+    if code == dialog.OK:
         return '2'
-    elif result == dialog.CANCEL:
+    elif code == dialog.CANCEL:
         return '3'
-    elif result == dialog.ESC:
+    elif code == dialog.ESC:
         close('Escape key pressed. Exiting.')
 
+
+# ------------------------------------------------------------------------------
+# useOverrideConfiguration
+# ------------------------------------------------------------------------------
+def dialog_override(override_source):
+    _info = {
+        'title':  'Use Branch Specific Override Configuration File?',
+        'width': 60,
+        'height': 8,
+        'default_button': 'yes',
+        'text': dedent('''\
+        A  branch specific configuration file was found in your personal directory:
+        {0}.
+
+        Would you like to use and override the other provided repos?
+        '''.format(override_source)),
+    }
+
+    code = dialog.yesno(**_info)
+
+    if code == dialog.OK:
+        return True
+    elif code == dialog.CANCEL:
+        return False
+    elif code == dialog.ESC:
+        close('User aborted setup.')
+
+
+def dialog_repo(choices):
+    '''Display 'choose repo' dialog.
+    '''
+    _info = {
+        'title':  'Choose Repos To Use To Build Packages',
+        'width': 76,
+        'height': 16,
+    }
+
+    while True:
+        code, tag = dialog.radiolist(
+            "Choose Repos To Use To Build Packages", width=76,
+            choices=choices, help_button=True, help_status=True)
+
+        if code == 'help':
+            tag, selected, choices = tag
+            dialog.msgbox("You asked for help about something called '{0}'. "
+                     "Sorry, but I am quite incompetent in this matter."
+                     .format(tag))
+
+        elif code == dialog.CANCEL:
+            close('User aborted setup.')
+
+        elif code == dialog.ESC:
+            close('User aborted setup.')
+
+        else:
+            # 'tag' is the chosen tag
+            break
+
+    return tag
+
+
+def dialog_ssh_access(default=False):
+    ''''''
+    default_button = 'yes' if default else 'no'
+
+    code = dialog.yesno(**{
+        'title':  'Enable SSH Access',
+        'width': 60,
+        'height': 8,
+        'default_button': default_button,
+        'text': dedent('''\
+        Do you have ssh access to the repos?
+
+        Select 'Yes' to configure urls to match git or 'No' for https"
+        '''),
+    })
+
+    if code == dialog.OK:
+        return True
+    elif code == dialog.CANCEL:
+        return False
+    elif code == dialog.ESC:
+        close('Escape key pressed. Exiting.')
+
+
+def dialog_template_only(default=False):
+    '''Dialog to display choice of building only templates.
+    '''
+    default_button = 'yes' if default else 'no'
+
+    code = dialog.yesno(**{
+        'title':  'Build Template Only?',
+        'width': 60,
+        'height': 8,
+        'default_button': default_button,
+        'text': dedent('''\
+        Would you like to build only the templates?
+
+        Select 'Yes' to to only build templates or 'No' for complete build
+        '''),
+    })
+
+    if code == dialog.OK:
+        return True
+    elif code == dialog.CANCEL:
+        return False
+    elif code == dialog.ESC:
+        close('Escape key pressed. Exiting.')
+
+
+def dialog_dists(choices, helper):
+    '''Display VM's for selction.
+    '''
+
+    info = {
+        'height': 0,
+        'width': 0,
+        'list_height': 0,
+        'choices': choices,
+        'title': 'Template Distribution Selection',
+        'help_button': True,
+        'item_help': True,
+        'help_tags': True,
+        'help_status': True,
+        'text': dedent('''\
+        Left column contains DIST name
+        Right column contains TEMPLATE_LABEL
+        '''),
+    }
+
+    while True:
+        code, tag = dialog.checklist(**info)
+        if code == 'help':
+            tag, selected_tags, choices = tag
+            dialog.msgbox(helper.get(tag, 'No Help available for {0}'.format(tag)), height=7, width=60)
+        else:
+            break
+
+    string = '\n'.join(tag)
+    dialog.msgbox('The following distributions will be added to the builder configuration:\n\n'
+             '{0}'.format(indent(string, '  ')), height=15, width=60,
+             title='Selected Distributions',
+             no_collapse=True)
+
+    return tag
 
 
 def dialog_verify_keys(config, force=False):
@@ -162,7 +329,7 @@ def dialog_verify_keys(config, force=False):
             else:
                 message = u'{key[owner]} key does not exist.\n\nSelect "Yes" to add or "No" to exit'.format(key=config.keys[key])
 
-            result = dialog.yesno(**{
+            code = dialog.yesno(**{
                 'title':  'Add Keys',
                 'width': 60,
                 'height': 8,
@@ -170,7 +337,7 @@ def dialog_verify_keys(config, force=False):
                 'text': message,
             })
 
-            if result != dialog.OK:
+            if code != dialog.OK:
                 close('User aborted setup: Exiting setup since keys can not be installed')
 
             # Receive key from keyserver
@@ -231,12 +398,41 @@ class Setup(object):
 
         ## Choose release version
         ## Soft link 'examples/templates.conf' to 'builder.conf'
-        #force = True
-        #self.set_release(force)
+        force = True
+        self.config.release = self.set_release(force)
 
         ## Parse the existing makefiles to obtain values needed for setup to provide
         ## required options to build new configuration file
         self.config.parse_makefiles()
+
+        ## Prompt for selection of base repo to use for build
+        self.config.git_prefix = self.set_repo()
+
+        ## TODO:
+        ## Choose BUILDER_PLUGINS
+
+        ## Choose if user has git ssh (commit) or http access to private repos
+        ## - Only asked if there is an override.conf configuration file to prevent
+        ##   access denied errors
+        ##
+        ## Example of override.conf to allow ssh and http access based on user selection:
+        ##
+        ## GITHUB_PREFIX = $(word $(SSH_ACCESS), http://github.com/private_repo/qubes- git@github.com:private_repo/qubes-)
+        ## RELEASE_INDEX = $(shell echo "$(RELEASE)-1" | bc)
+        ##
+        ## [==- 'gui-agent-linux'==========================================================
+        ## [==- defaults: [R2:release2, R3:master]
+        ## [===============================================================================
+        ## GIT_URL_gui_agent_linux = $(GITHUB_PREFIX)/gui-agent-linux.git
+        ## BRANCH_gui_agent_linux = $(word $(RELEASE_INDEX), release2 master)
+        if os.path.exists(self.config.get_filename('conf_override')):
+            self.config.ssh_access = dialog_ssh_access(self.config.ssh_access)
+
+        ## Choose to build a complete system or templates only
+        self.config.template_only = dialog_template_only(self.config.template_only)
+
+        # Select which templates to build (DISTS_VM)
+        self.config.selected_dists_vm = self.set_dists()
 
     def gpg_verify_key(self, key):
         key_data = self.config.keys.get(key, None)
@@ -313,15 +509,56 @@ class Setup(object):
         release_selected = dialog_release(release_original or '3')
 
         if release_original != release_selected:
-            path_link(self.config.get_filename('conf_template'), self.config.get_filename('conf_builder'))
+            soft_link(self.config.get_filename('conf_template'), self.config.get_filename('conf_builder'))
 
-        self.config.release = release_selected
-        return self.config.release
+        return release_selected
 
+    def set_repo(self):
+        '''Set repo prefix.
+        '''
+        counter=1
+        choices = []
+
+        toggle = self.config.git_prefix == self.config.default_prefix
+        choices.append( (self.config.default_prefix, 'Stable - Default Repo', toggle) )
+
+        for index, repo in self.config.repos.items():
+            toggle = self.config.git_prefix == repo['prefix']
+            choices.append( (repo['prefix'], repo['description'], toggle) )
+
+        return dialog_repo(choices)
+
+    def set_dists(self):
+        ''''''
+        choices = []
+        helper = {}
+        for dist in self.config.all_dists_vm:
+            alias = self.config.template_aliases.get(dist, '')
+            aliasr = self.config.template_aliases_reversed.get(dist, '')
+            label = self.config.template_labels.get(alias or dist, '')
+
+            tag = aliasr or dist
+            item = label
+            help = dist if dist != tag else ''
+
+            helper[tag] = dedent('''\
+            Distribution: {0}
+            Template Label: {1}
+            Template Alias: {2}
+            ''').format(tag, item, help)
+
+            if help:
+                help = 'Alias value: {0}'.format(help)
+
+            choices.append( (tag, item, dist in self.config.selected_dists_vm, help) )
+
+        return dialog_dists(choices, helper)
 
 
 class Config(object):
     ''''''
+    options = None
+
     def __init__(self, filename, **options):
         self.filename = filename
 
@@ -333,9 +570,27 @@ class Config(object):
         self.release = None
 
         self.options = options
+        Config.options = options
 
-    def get_filename(self, filename):
-        dir_builder = self.options.get('dir_builder', os.path.abspath(os.path.curdir))
+        self.override_source = None
+        self.default_prefix= None
+        self.ssh_access = None
+        self.template_only = None
+        self.git_prefix = None
+        self.default_prefix= None
+        self.all_dists_vm = None
+        self.selected_dist_dom0 = None
+        self.selected_dists_vm = None
+        self.template_only = None
+        self.template_aliases = None
+        self.template_aliases_reversed = None
+        self.template_labels = None
+        self.template_labels_reversed = None
+        self.about = None
+
+    @classmethod
+    def get_filename(cls, filename):
+        dir_builder = cls.options.get('dir_builder', os.path.abspath(os.path.curdir))
         dir_configurations = os.path.join(dir_builder, 'example-configs')
 
         filenames = {
@@ -350,7 +605,6 @@ class Config(object):
         }
 
         return filenames.get(filename, None)
-
 
     def _get_section(self, section_name):
         adict = {}
@@ -379,22 +633,58 @@ class Config(object):
             elif 'repo' in section:
                 self.repos[section['repo']] = section
 
+    def overrides(self):
+        '''Set up any branch specific override configurations.
+        '''
+        #--------------------------------------------------------------------------
+        # See if a branch specific override configuration file exists
+        #--------------------------------------------------------------------------
+        branch = sh.git('rev-parse', '--abbrev-ref', 'HEAD').strip()
+        override_target = self.get_filename('conf_override')
+        override_source = None
+
+        # Skip if overrides already exsits and is a regular file
+        if not (os.path.exists(self.get_filename('conf_override')) and os.path.islink(self.get_filename('conf_override'))):
+            dir = self.get_filename('dir_configurations')
+            override = os.path.basename(self.get_filename('conf_override'))
+
+            patterns = []
+            # Example: example-configs/r3-feature_branch-override.conf
+            patterns.append('{0}/r{1}-{2}-{3}'.format(dir, self.release, branch, override))
+
+            # Example: example-configs/feature_branch-override.conf
+            patterns.append('{0}/{1}-{2}'.format(dir, branch, override))
+
+            # Example: example-configs/override.conf
+            patterns.append('{0}/{1}'.format(dir, override))
+
+            for pattern in patterns:
+                if os.path.exists(pattern):
+                    override_source = pattern
+                    break
+
+            if override_source:
+                # If override_target alreaady exists (it is a link or we would not be here)
+                # display a confirmation dialog to link if not currently linked to override_source
+                if not os.readlink(override_target) == override_source:
+                    result = dialog_override(override_source)
+
+                    # Soft link override_source to override_target if user confirmed override
+                    if result:
+                        soft_link(override_source, override_target)
+                    else:
+                        override_source = None
+
+        self.override_source = override_source
+
     def parse_makefiles(self):
         '''
         '''
-
         from sh import make
         env = os.environ.copy()
-        #make.bake('-B', '-C', self.get_filename('dir_builder'), '--quiet', _env=env)
         make = make.bake('--always-make', '--quiet', 'get-var', directory=self.get_filename('dir_builder'), _env=env)
 
-        #--------------------------------------------------------------------------
         # Get variables from Makefile INCLUDING setup.conf Makefile
-        #--------------------------------------------------------------------------
-        #SSH_ACCESS="$(GET_VAR=SSH_ACCESS make get-var)"
-        #TEMPLATE_ONLY="$(GET_VAR=TEMPLATE_ONLY make get-var)"
-        #GIT_PREFIX="$(GET_VAR=GIT_PREFIX make get-var)"
-
         try:
             env['GET_VAR'] = 'SSH_ACCESS'
             self.ssh_access = make().strip()
@@ -404,92 +694,51 @@ class Config(object):
 
             env['GET_VAR'] = 'GIT_PREFIX'
             self.git_prefix = make().strip()
+
+            env['GET_VAR'] = 'DISTS_VM'
+            self.selected_dists_vm = make().strip().split()
         except sh.ErrorReturnCode, err:
-            print err
             pass
 
-        '''
         # Remove GIT_PREFIX from builder-release.conf so default prefix can be
         # determined
-        if [ -e "${CONF_RELEASE}" ]; then
-            sed -i 's/GIT_PREFIX/#GIT_PREFIX/' "${CONF_RELEASE}"
-        fi
-        DEFAULT_PREFIX="$(GET_VAR=GIT_PREFIX make get-var)"
+        if os.path.exists(self.get_filename('conf_release')):
+            sh.sed('-i', 's/GIT_PREFIX/#GIT_PREFIX/', self.get_filename('conf_release'))
+        env['GET_VAR'] = 'GIT_PREFIX'
+        self.default_prefix= make().strip()
 
-        #--------------------------------------------------------------------------
         # Move setup.conf out of the way if it exists
-        #--------------------------------------------------------------------------
-        if [ -f "${CONF_FILE}" ]; then
-            SELECTED_DISTS_VM=( $(GET_VAR=DISTS_VM make get-var) )
-            mv "${CONF_FILE}" "${CONF_FILE_OLD}"
-        fi
+        if os.path.exists(Config.get_filename('conf_file')):
+            shutil.move(Config.get_filename('conf_file'), Config.get_filename('conf_file_old'))
 
-        #--------------------------------------------------------------------------
-        # See if a branch specific override configuration file exists
-        #--------------------------------------------------------------------------
-        BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-        OVERRIDE_TARGET="./${CONF_OVERRIDE}"
+        # Set up any branch specific override configurations
+        self.overrides()
 
-        # Check for generic overrides only if 'override.conf' does not exist
-        if [ "X${OVERRIDE_SOURCE}" == "X" ]; then
-
-            # Example: example-configs/r3-feature_branch-override.conf
-            if [ -e "${CONF_MASTER_DIR}/r${RELEASE}-${BRANCH}-${CONF_OVERRIDE}" ]; then
-                OVERRIDE_SOURCE="${CONF_MASTER_DIR}/r${RELEASE}-${BRANCH}-${CONF_OVERRIDE}"
-
-            # Example: example-configs/feature_branch-override.conf
-            elif [ -e "${CONF_MASTER_DIR}/${BRANCH}-${CONF_OVERRIDE}" ]; then
-                OVERRIDE_SOURCE="${CONF_MASTER_DIR}/${BRANCH}-${CONF_OVERRIDE}"
-
-            # Example: example-configs/override.conf
-            elif [ -e "${CONF_MASTER_DIR}/${CONF_OVERRIDE}" ]; then
-                OVERRIDE_SOURCE="${CONF_MASTER_DIR}/${CONF_OVERRIDE}"
-            fi
-        fi
-
-        # Check if a branch specific user override configuration file is available
-        if [ -f "${OVERRIDE_SOURCE}" ] && [[ ! -a "${OVERRIDE_TARGET}" || -h "${OVERRIDE_TARGET}" ]]; then
-
-            # Don't do anything is configuration file is already linked
-            if [ "$(readlink -m ${OVERRIDE_SOURCE})" != "$(readlink -m ${CONF_OVERRIDE})" ]; then
-                # Display 'Use Override Dialog'
-                useOverrideConfiguration || unset OVERRIDE_SOURCE
-
-                # Soft link the configuration file
-                if [[ -n "${OVERRIDE_SOURCE}" ]]; then
-                    ln -sf "${OVERRIDE_SOURCE}" "${OVERRIDE_TARGET}" || unset OVERRIDE_SOURCE
-
-                    # Some type of linking error
-                    if [[ -z "${OVERRIDE_SOURCE}" ]]; then
-                        message="Could not set link to override configuration file!\n\nUsing defaults."
-                        dialog --msgbox "${message}" 8 60
-                    fi
-                # Remove stale override link
-                elif [ -h "${CONF_OVERRIDE}" ]; then
-                    rm -f "${CONF_OVERRIDE}"
-                fi
-            fi
-
-        else
-            # If a soft-linked override exists, remove it, but don't delete any regular files
-            if [ -h "${CONF_OVERRIDE}" ]; then
-                rm -f "${CONF_OVERRIDE}"
-            fi
-
-            if [ -f "${CONF_OVERRIDE}" ]; then
-                OVERRIDE_SOURCE="${CONF_OVERRIDE}"
-            else
-                unset OVERRIDE_SOURCE
-            fi
-        fi
-
-        #--------------------------------------------------------------------------
         # Get variables from Makefile NOT INCLDING setup.conf Makefile
-        #--------------------------------------------------------------------------
-        SELECTED_DISTS_VM=${SELECTED_DISTS_VM-( $(GET_VAR=DIST_DOM0 make get-var) )}
-        DISTS_VM=( $(SETUP_MODE=1 GET_VAR=DISTS_VM make get-var) )
-        ABOUT=($(make -B about))
-        '''
+        # SELECTED_DISTS_VM=${SELECTED_DISTS_VM-( $(GET_VAR=DIST_DOM0 make get-var) )}
+        # DISTS_VM=( $(SETUP_MODE=1 GET_VAR=DISTS_VM make get-var) )
+        # ABOUT=($(make -B about))
+        try:
+            env['GET_VAR'] = 'DIST_DOM0'
+            self.selected_dist_dom0 = make().strip().split()
+
+            env['SETUP_MODE'] = '1'
+            env['GET_VAR'] = 'DISTS_VM'
+            self.all_dists_vm = make().strip().split()
+
+            env['GET_VAR'] = 'TEMPLATE_ALIAS'
+            aliases = make().strip().split()
+            self.template_aliases = dict([(item.split(':')) for item in aliases])
+            self.template_aliases_reversed = dict([(value, key) for key, value in self.template_aliases.items()])
+
+            env['GET_VAR'] = 'TEMPLATE_LABEL'
+            labels = make().strip().split()
+            self.template_labels = dict([(item.split(':')) for item in labels])
+            self.template_labels_reversed = dict([(value, key) for key, value in self.template_labels.items()])
+
+            self.about = sh.make('--always-make', '--quiet', 'about', directory=self.get_filename('dir_builder'))
+        except sh.ErrorReturnCode, err:
+            pass
 
 
 def main(argv):
@@ -509,6 +758,7 @@ def main(argv):
 
     setup = Setup(**args)
     setup()
+    close('Setup Complete.')
 
 
 if __name__ == '__main__':
