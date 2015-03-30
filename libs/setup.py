@@ -10,6 +10,13 @@
 # Install 'dialog' program if it does not yet exist
 # ------------------------------------------------------------------------------
 
+'''
+TODO:
+  - overrides or merge .setup.data
+  - BUILDER_PLUGINS selection
+  - combine release.conf and setup.conf into builder.conf
+'''
+
 from __future__ import unicode_literals
 import sys
 import os
@@ -18,6 +25,8 @@ import codecs
 import argparse
 import collections
 import shutil
+import re
+import types
 
 import sh
 
@@ -36,34 +45,48 @@ except ImportError:
 
         for line in text.splitlines(True):
             if (callable(predicate) and predicate(line)) \
-                    or (not callable(predicate) and predicate) \
-                    or (predicate is None and line.strip()):
+               or (not callable(predicate) and predicate) \
+               or (predicate is None and line.strip()):
                 line = prefix + line
             l.append(line)
 
         return ''.join(l)
 
-def close(message=None):
-    '''Function to exit.  Maybe restoring some files before exiting.
+
+def dialog_infobox(*varargs, **kwargs):
+    '''Display text in infodialog.
+
+    Only displays if text is provided. Text can be provided in varargs
     '''
-    if message:
-        info = {
-            'title':  'System Exit!',
-            'width': 60,
-            'height': 8,
-            'text': message
-        }
-        if isinstance(message, collections.Mapping):
-            info.update(message)
+    info = {
+        'title':  'Qubes Setup Information.',
+        'width': 60,
+        'height': 8,
+        'text': ''
+    }
+
+    info.update(kwargs)
+    if varargs:
+        info['text'] = ' '.join(varargs)
+
+    if info['text']:
         dialog.infobox(**info)
 
+
+def close(*varargs, **kwargs):
+    '''Function to exit.  Maybe restoring some files before exiting.
+    '''
+    kwargs['title'] = 'System Exit!'
+    dialog_infobox(*varargs, **kwargs)
+
     # Restore original setup.conf
-    if os.path.exists(Config.get_filename('conf_file_old')):
-        shutil.move(Config.get_filename('conf_file_old'), Config.get_filename('conf_file'))
+    config = Config(None)
+    if os.path.exists(config.conf_file_old) and not os.path.exists(config.conf_file):
+        shutil.move(config.conf_file_old, config.conf_file)
 
     # Restore original GIT_PREFIX
-    if os.path.exists(Config.get_filename('conf_release')):
-        sh.sed('-i', 's/#GIT_PREFIX/GIT_PREFIX/', Config.get_filename('conf_release'))
+    if os.path.exists(config.conf_release):
+        sh.sed('-i', 's/#GIT_PREFIX/GIT_PREFIX/', config.conf_release)
 
     sys.exit()
 
@@ -122,6 +145,33 @@ dialog = Dialog(dialog='dialog')
 dialog.set_background_title("Qubes Builder Configuration Utility")
 
 
+def write_file(filename, text):
+    try:
+        with codecs.open(filename, 'w', 'utf8') as outfile:
+            outfile.write(dedent(text))
+    except IOError, err:
+        close(err)
+
+
+def display_configuration(filename):
+    '''Display the configuration file.
+    '''
+    ansi = ANSIColor()
+    os.system('clear')
+    try:
+        with codecs.open(filename, 'r', 'utf8') as infile:
+            for line in infile:
+                match = re.match(r'(?P<text>.*(?=#)|.*)(?P<comment>([#].*)|)', line.rstrip())
+                line = ''
+                if match.groupdict()['text']:
+                    line += '{ansi[bold]}{ansi[black]}{0}{ansi[normal]}'.format(match.groupdict()['text'], ansi=ansi)
+                if match.groupdict()['comment']:
+                    line += '{ansi[bold]}{ansi[blue]}{0}{ansi[normal]}'.format(match.groupdict()['comment'], ansi=ansi)
+                print line
+    except IOError, err:
+        close(err)
+
+
 def soft_link(source, target):
     '''Attempt to soft-link a file.  Exit with message on failure.
     '''
@@ -155,9 +205,9 @@ def dialog_release(release):
         'no_label': 'Release 3',
         'default_button': default_button,
         'text': dedent('''\
-        Choose which version of Qubes you wish to build.
+            Choose which version of Qubes you wish to build.
 
-        Valid options are either the stable release 2 or development release 3 version.
+            Valid options are either the stable release 2 or development release 3 version.
         '''),
     })
 
@@ -179,10 +229,10 @@ def dialog_override(override_source):
         'height': 8,
         'default_button': 'yes',
         'text': dedent('''\
-        A  branch specific configuration file was found in your personal directory:
-        {0}.
+            A  branch specific configuration file was found in your personal directory:
+            {0}.
 
-        Would you like to use and override the other provided repos?
+            Would you like to use and override the other provided repos?
         '''.format(override_source)),
     }
 
@@ -213,8 +263,8 @@ def dialog_repo(choices):
         if code == 'help':
             tag, selected, choices = tag
             dialog.msgbox("You asked for help about something called '{0}'. "
-                     "Sorry, but I am quite incompetent in this matter."
-                     .format(tag))
+                          "Sorry, but I am quite incompetent in this matter."
+                          .format(tag))
 
         elif code == dialog.CANCEL:
             close('User aborted setup.')
@@ -239,9 +289,9 @@ def dialog_ssh_access(default=False):
         'height': 8,
         'default_button': default_button,
         'text': dedent('''\
-        Do you have ssh access to the repos?
+            Do you have ssh access to the repos?
 
-        Select 'Yes' to configure urls to match git or 'No' for https"
+            Select 'Yes' to configure urls to match git or 'No' for https"
         '''),
     })
 
@@ -264,9 +314,9 @@ def dialog_template_only(default=False):
         'height': 8,
         'default_button': default_button,
         'text': dedent('''\
-        Would you like to build only the templates?
+            Would you like to build only the templates?
 
-        Select 'Yes' to to only build templates or 'No' for complete build
+            Select 'Yes' to to only build templates or 'No' for complete build
         '''),
     })
 
@@ -293,8 +343,8 @@ def dialog_dists(choices, helper):
         'help_tags': True,
         'help_status': True,
         'text': dedent('''\
-        Left column contains DIST name
-        Right column contains TEMPLATE_LABEL
+            Left column contains DIST name
+            Right column contains TEMPLATE_LABEL
         '''),
     }
 
@@ -308,9 +358,9 @@ def dialog_dists(choices, helper):
 
     string = '\n'.join(tag)
     dialog.msgbox('The following distributions will be added to the builder configuration:\n\n'
-             '{0}'.format(indent(string, '  ')), height=15, width=60,
-             title='Selected Distributions',
-             no_collapse=True)
+                  '{0}'.format(indent(string, '  ')), height=15, width=60,
+                  title='Selected Distributions',
+                  no_collapse=True)
 
     return tag
 
@@ -412,27 +462,20 @@ class Setup(object):
         ## Choose BUILDER_PLUGINS
 
         ## Choose if user has git ssh (commit) or http access to private repos
-        ## - Only asked if there is an override.conf configuration file to prevent
-        ##   access denied errors
-        ##
-        ## Example of override.conf to allow ssh and http access based on user selection:
-        ##
-        ## GITHUB_PREFIX = $(word $(SSH_ACCESS), http://github.com/private_repo/qubes- git@github.com:private_repo/qubes-)
-        ## RELEASE_INDEX = $(shell echo "$(RELEASE)-1" | bc)
-        ##
-        ## [==- 'gui-agent-linux'==========================================================
-        ## [==- defaults: [R2:release2, R3:master]
-        ## [===============================================================================
-        ## GIT_URL_gui_agent_linux = $(GITHUB_PREFIX)/gui-agent-linux.git
-        ## BRANCH_gui_agent_linux = $(word $(RELEASE_INDEX), release2 master)
-        if os.path.exists(self.config.get_filename('conf_override')):
-            self.config.ssh_access = dialog_ssh_access(self.config.ssh_access)
+        if os.path.exists(self.config.conf_override):
+            self.config.ssh_access = self.set_ssh_access()
 
         ## Choose to build a complete system or templates only
         self.config.template_only = dialog_template_only(self.config.template_only)
 
-        # Select which templates to build (DISTS_VM)
+        ## Select which templates to build (DISTS_VM)
         self.config.selected_dists_vm = self.set_dists()
+
+        ## Write builder-release.conf
+        self.config.write_release_configuration()
+
+        ## Write setup.conf
+        self.config.write_configuration()
 
     def gpg_verify_key(self, key):
         key_data = self.config.keys.get(key, None)
@@ -499,9 +542,9 @@ class Setup(object):
         '''Select release version of Qubes to build.
         '''
         release_original = None
-        if os.path.exists(self.config.get_filename('conf_builder')):
+        if os.path.exists(self.config.conf_builder):
             try:
-                release_original = sh.make('-C', self.config.get_filename('dir_builder'), '-B', 'release', '--quiet').strip()
+                release_original = sh.make('-C', self.config.dir_builder, '-B', 'release', '--quiet').strip()
             except sh.ErrorReturnCode, err:
                 print err
                 pass
@@ -509,24 +552,44 @@ class Setup(object):
         release_selected = dialog_release(release_original or '3')
 
         if release_original != release_selected:
-            soft_link(self.config.get_filename('conf_template'), self.config.get_filename('conf_builder'))
+            soft_link(self.config.conf_template, self.config.conf_builder)
 
         return release_selected
 
     def set_repo(self):
         '''Set repo prefix.
         '''
-        counter=1
+        default_set = False
         choices = []
-
-        toggle = self.config.git_prefix == self.config.default_prefix
-        choices.append( (self.config.default_prefix, 'Stable - Default Repo', toggle) )
 
         for index, repo in self.config.repos.items():
             toggle = self.config.git_prefix == repo['prefix']
+            if toggle:
+                default_set = True
             choices.append( (repo['prefix'], repo['description'], toggle) )
 
+        choices.insert(0, (self.config.default_prefix, 'Stable - Default Repo', not default_set) )
+
         return dialog_repo(choices)
+
+    def set_ssh_access(self):
+        '''Set GIT_BASEURL and GIT_PREFIX to allow ssh (write) access to repo.
+         Convert:
+           `GIT_BASEURL` from `git://github.com` to `git@github.com:repo`
+         - and -
+           `GIT_PREFIX` from `repo/qubes-` to `qubes-`
+        '''
+        ssh_access = dialog_ssh_access(self.config.ssh_access)
+        ssh_access = 1 if ssh_access else 0
+
+        if ssh_access:
+            if '/' in self.config.git_prefix:
+                repo, prefix = self.config.git_prefix.split('/')
+                self.config.git_prefix = prefix
+                baseurl = re.match(r'^(.*//|.*@)(.*)', self.config.git_baseurl)
+                self.config.git_baseurl = 'git@{0}:{1}'.format(baseurl.group(2), repo)
+
+        return ssh_access
 
     def set_dists(self):
         ''''''
@@ -557,54 +620,75 @@ class Setup(object):
 
 class Config(object):
     ''''''
-    options = None
+    MARKER = object()
+
+    _makefile_vars = {
+        'release':                   0 ,
+        'override_source':           '',
+        'default_prefix':            '',
+        'ssh_access':                0 ,
+        'template_only':             0 ,
+        'git_baseurl':               '',
+        'git_prefix':                '',
+        'default_prefix':            '',
+        'all_dists_vm':              [],
+        'selected_dist_dom0':        '',
+        'selected_dists_vm':         [],
+        'template_aliases':          [],
+        'template_aliases_reversed': [],
+        'template_labels':           [],
+        'template_labels_reversed':  [],
+        'about':                     '',
+        }
 
     def __init__(self, filename, **options):
         self.filename = filename
+        self.options = options
 
         self.parser = ConfigParser()
+        self.parser.add_section('makefile')
         self.sections = []
         self.keys = collections.OrderedDict()
         self.repos = collections.OrderedDict()
 
-        self.release = None
+        self._init_makefile_vars()
 
-        self.options = options
-        Config.options = options
+        self.dir_builder = self.options.get('dir_builder', os.path.abspath(os.path.curdir))
+        self.dir_configurations = os.path.join(self.dir_builder, 'example-configs')
+        self.conf_template = os.path.join(self.dir_configurations, 'templates.conf')
+        self.conf_file = os.path.join(self.dir_builder, 'setup.conf')
+        self.conf_file_old = os.path.join(self.dir_builder, 'setup.conf.old')
+        self.conf_override = os.path.join(self.dir_builder, 'override.conf')
+        self.conf_release = os.path.join(self.dir_builder, 'builder-release.conf')
+        self.conf_builder = os.path.join(self.dir_builder, 'builder.conf')
 
-        self.override_source = None
-        self.default_prefix= None
-        self.ssh_access = None
-        self.template_only = None
-        self.git_prefix = None
-        self.default_prefix= None
-        self.all_dists_vm = None
-        self.selected_dist_dom0 = None
-        self.selected_dists_vm = None
-        self.template_only = None
-        self.template_aliases = None
-        self.template_aliases_reversed = None
-        self.template_labels = None
-        self.template_labels_reversed = None
-        self.about = None
+    def _init_makefile_vars(self):
+        for key, value in self._makefile_vars.items():
+            setattr(self, key, value)
+        print
 
-    @classmethod
-    def get_filename(cls, filename):
-        dir_builder = cls.options.get('dir_builder', os.path.abspath(os.path.curdir))
-        dir_configurations = os.path.join(dir_builder, 'example-configs')
+    def __getattribute__(self, name):
+        return super(Config, self).__getattribute__(name)
 
-        filenames = {
-            'dir_builder':        dir_builder,
-            'dir_configurations': dir_configurations,
-            'conf_template':      os.path.join(dir_configurations, 'templates.conf'),
-            'conf_file':          os.path.join(dir_builder, 'setup.conf'),
-            'conf_file_old':      os.path.join(dir_builder, 'setup.conf.old'),
-            'conf_override':      os.path.join(dir_builder, 'override.conf'),
-            'conf_release':       os.path.join(dir_builder, 'builder-release.conf'),
-            'conf_builder':       os.path.join(dir_builder, 'builder.conf'),
-        }
-
-        return filenames.get(filename, None)
+    def __setattr__(self, name, value):
+        if name in self._makefile_vars:
+            default = self._makefile_vars[name]
+            if type(value) != type(default):
+                try:
+                    if isinstance(default, types.BooleanType):
+                        value = bool(value)
+                    elif isinstance(default, types.IntType):
+                        value = int(value)
+                    elif isinstance(default, types.FloatType):
+                        value = float(value)
+                    elif isinstance(default, types.ListType):
+                        if isinstance(value, types.StringTypes):
+                            value = value.strip().split()
+                except ValueError, err:
+                    #close('Invalid Makefile value: {0}={1}:\n\n{2}'.format(name, value, err))
+                    value = default
+            self.parser.set('makefile', name, value)
+        return super(Config, self).__setattr__(name, value)
 
     def _get_section(self, section_name):
         adict = {}
@@ -640,13 +724,13 @@ class Config(object):
         # See if a branch specific override configuration file exists
         #--------------------------------------------------------------------------
         branch = sh.git('rev-parse', '--abbrev-ref', 'HEAD').strip()
-        override_target = self.get_filename('conf_override')
+        override_target = self.conf_override
         override_source = None
 
         # Skip if overrides already exsits and is a regular file
-        if not (os.path.exists(self.get_filename('conf_override')) and os.path.islink(self.get_filename('conf_override'))):
-            dir = self.get_filename('dir_configurations')
-            override = os.path.basename(self.get_filename('conf_override'))
+        if not (os.path.exists(self.conf_override) and not os.path.islink(self.conf_override)):
+            dir = self.dir_configurations
+            override = os.path.basename(self.conf_override)
 
             patterns = []
             # Example: example-configs/r3-feature_branch-override.conf
@@ -675,6 +759,9 @@ class Config(object):
                     else:
                         override_source = None
 
+        elif os.path.exists(self.conf_override):
+            override_source = self.conf_override
+
         self.override_source = override_source
 
     def parse_makefiles(self):
@@ -682,7 +769,7 @@ class Config(object):
         '''
         from sh import make
         env = os.environ.copy()
-        make = make.bake('--always-make', '--quiet', 'get-var', directory=self.get_filename('dir_builder'), _env=env)
+        make = make.bake('--always-make', '--quiet', 'get-var', directory=self.dir_builder, _env=env)
 
         # Get variables from Makefile INCLUDING setup.conf Makefile
         try:
@@ -692,24 +779,27 @@ class Config(object):
             env['GET_VAR'] = 'TEMPLATE_ONLY'
             self.template_only = make().strip()
 
+            env['GET_VAR'] = 'GIT_BASEURL'
+            self.git_baseurl = make().strip()
+
             env['GET_VAR'] = 'GIT_PREFIX'
             self.git_prefix = make().strip()
 
             env['GET_VAR'] = 'DISTS_VM'
             self.selected_dists_vm = make().strip().split()
         except sh.ErrorReturnCode, err:
-            pass
+            close('Error parsing Makefile): {0}'.format(err))
 
         # Remove GIT_PREFIX from builder-release.conf so default prefix can be
         # determined
-        if os.path.exists(self.get_filename('conf_release')):
-            sh.sed('-i', 's/GIT_PREFIX/#GIT_PREFIX/', self.get_filename('conf_release'))
+        if os.path.exists(self.conf_release):
+            sh.sed('-i', 's/GIT_PREFIX/#GIT_PREFIX/', self.conf_release)
         env['GET_VAR'] = 'GIT_PREFIX'
         self.default_prefix= make().strip()
 
         # Move setup.conf out of the way if it exists
-        if os.path.exists(Config.get_filename('conf_file')):
-            shutil.move(Config.get_filename('conf_file'), Config.get_filename('conf_file_old'))
+        if os.path.exists(self.conf_file):
+            shutil.move(self.conf_file, self.conf_file_old)
 
         # Set up any branch specific override configurations
         self.overrides()
@@ -736,9 +826,122 @@ class Config(object):
             self.template_labels = dict([(item.split(':')) for item in labels])
             self.template_labels_reversed = dict([(value, key) for key, value in self.template_labels.items()])
 
-            self.about = sh.make('--always-make', '--quiet', 'about', directory=self.get_filename('dir_builder'))
+            self.about = sh.make('--always-make', '--quiet', 'about', directory=self.dir_builder)
         except sh.ErrorReturnCode, err:
             pass
+
+    def write_release_configuration(self):
+        '''Write release version to configuration file to builder-release.conf.
+        '''
+        text = '''\
+            RELEASE := {self[release]}
+            GIT_PREFIX := {self[git_prefix]}
+
+            .PHONY: about
+            about::
+            	@echo "builder-release.conf"
+            '''.format(self=vars(self))
+
+        write_file(self.conf_release, text)
+        dialog_infobox(text)
+
+    def write_configuration(self):
+        '''Write setup configuration file to setup.conf.
+        '''
+        dists_vm = ''
+        indent = '            '
+
+        # Format DISTS_VM
+        for dist in self.selected_dists_vm:
+            dists_vm += 'DISTS_VM += {0}\n{1}'.format(dist, indent)
+        dists_vm = dists_vm.strip()
+
+        # Format about
+        about = ' '.join(self.about.split())
+
+        text = '''\
+            #
+            # Enabled DISTS_VMs
+            #
+            DISTS_VM :=
+            {dists_vm}
+
+            #
+            # Qubes Release: {self[release]}
+            # Source Prefix: {self[git_prefix]} (repo)
+            #
+            # Master Configuration File(s):
+            # setup.conf {about}
+            #
+            # builder.conf linked to:
+            # {self[conf_template]}
+            #
+            '''.format(about=about, dists_vm=dists_vm, self=vars(self))
+
+        ssh_access = '''
+            #
+            # SSH mode enabled.  Converted `GIT_BASEURL` and `GIT_PREFIX`
+            # to use `ssh` mode instead of `https`
+            #
+            SSH_ACCESS := {self[ssh_access]}
+            GIT_BASEURL := {self[git_baseurl]}
+            GIT_PREFIX := {self[git_prefix]}
+            '''.format(self=vars(self))
+        if self.ssh_access:
+            text += ssh_access
+
+        override = '''
+            #
+            # Override configuration file to be included:
+            #
+            -include {self[conf_override]}
+            '''.format(self=vars(self))
+        if self.override_source:
+            text += override
+
+        template_only = '''
+            #
+            # Only build templates (comment out to build all of Qubes).
+            #
+            TEMPLATE_ONLY ?= {self[template_only]}
+            '''.format(self=vars(self))
+        if self.template_only:
+            text += template_only
+
+        about = '''
+            .PHONY: about
+            about::
+            	@echo "setup.conf"
+            '''
+        text += about
+
+        write_file(self.conf_file, text)
+        display_configuration(self.conf_file)
+
+        ansi =  ANSIColor()
+        info = '\nNew configuration file written to: {0}\n'.format(self.conf_file)
+
+        install_qubes = '''
+            Complete Qubes Build Steps
+            --------------------------
+            make get-sources
+            make qubes
+            make iso
+            '''
+
+        install_qubes_vm = '''
+            Template Only Build Steps
+            -------------------------
+            make get-sources
+            make template-modules
+            make template
+            '''
+
+        if self.template_only:
+            info += dedent(install_qubes_vm)
+        else:
+            info += dedent(install_qubes)
+        print '{ansi[green]}{0}{ansi[normal]}'.format(info, ansi=ansi)
 
 
 def main(argv):
@@ -758,7 +961,7 @@ def main(argv):
 
     setup = Setup(**args)
     setup()
-    close('Setup Complete.')
+    close()
 
 
 if __name__ == '__main__':
