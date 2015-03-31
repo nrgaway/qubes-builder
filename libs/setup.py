@@ -73,20 +73,16 @@ def dialog_infobox(*varargs, **kwargs):
         dialog.infobox(**info)
 
 
-def close(*varargs, **kwargs):
+def exit(*varargs, **kwargs):
     '''Function to exit.  Maybe restoring some files before exiting.
     '''
     kwargs['title'] = 'System Exit!'
     dialog_infobox(*varargs, **kwargs)
 
-    # Restore original setup.conf
+    # Restore original template.conf
     config = Config(None)
-    if os.path.exists(config.conf_file_old) and not os.path.exists(config.conf_file):
-        shutil.move(config.conf_file_old, config.conf_file)
-
-    # Restore original GIT_PREFIX
-    if os.path.exists(config.conf_release):
-        sh.sed('-i', 's/#GIT_PREFIX/GIT_PREFIX/', config.conf_release)
+    if os.path.exists(config.conf_builder + '.bak'):
+        shutil.move(config.conf_builder + '.bak', config.conf_builder)
 
     sys.exit()
 
@@ -127,7 +123,7 @@ if not sh.which(DIALOG):
     if char.lower() != 'y':
         print '\nYou selected not to install {ansi[blue]}{0}{ansi[normal]} and therefore setup must now exit'.format(DIALOG, ansi=ansi)
         print 'Exiting!'
-        close()
+        exit()
 
     os.system('clear')
     runnning = sudo.yum('-y', 'install', 'dialog', _bg=True)
@@ -150,8 +146,44 @@ def write_file(filename, text):
         with codecs.open(filename, 'w', 'utf8') as outfile:
             outfile.write(dedent(text))
     except IOError, err:
-        close(err)
+        exit(err)
 
+
+import shlex
+def parse_brackets(text):
+    '''A very simple lexer to parse round brackets.
+    '''
+    ansi = ANSIColor()
+
+    lexer = shlex.shlex(text)
+    lexer.whitespace = '\t\r\n'
+
+    text = ''
+    raw = ''
+    count =  0
+
+    for token in lexer:
+        chars = token
+        if  chars[0] in '\'"' and chars[-1] in '\'"':
+            new_chars = parse_brackets(chars[1:-1])
+            text += chars[0] + new_chars + chars[-1]
+            continue
+        if token == '(':
+            count += 1
+            if raw and raw[-1] == '$':
+                chars = '{ansi[blue]}{0}'.format(chars, ansi=ansi)
+        elif token == ')':
+            if count == 1:
+                chars = '{0}{ansi[normal]}'.format(chars, ansi=ansi)
+            count -= 1
+        elif count:
+            if raw and raw[-1] != '(':
+                chars = '{ansi[black]}{0}'.format(chars, ansi=ansi)
+
+        raw += token
+        text += chars
+
+    return text
 
 def display_configuration(filename):
     '''Display the configuration file.
@@ -161,15 +193,29 @@ def display_configuration(filename):
     try:
         with codecs.open(filename, 'r', 'utf8') as infile:
             for line in infile:
-                match = re.match(r'(?P<text>.*(?=#)|.*)(?P<comment>([#].*)|)', line.rstrip())
-                line = ''
-                if match.groupdict()['text']:
-                    line += '{ansi[bold]}{ansi[black]}{0}{ansi[normal]}'.format(match.groupdict()['text'], ansi=ansi)
-                if match.groupdict()['comment']:
-                    line += '{ansi[bold]}{ansi[blue]}{0}{ansi[normal]}'.format(match.groupdict()['comment'], ansi=ansi)
+                match = re.match(r'(?P<text>.*?(?=#)|.*)(?P<comment>([#]+.*)|)', line.rstrip())
+                if match:
+                    line = ''
+                    text = match.groupdict()['text']
+                    comment = match.groupdict()['comment']
+                    if match.groupdict()['text']:
+                        var = re.match(r'(?P<var>.*)(?P<text>[?:]?=.*)', text)
+                        target = re.match(r'(?P<target>.*[:]+)(?P<text>.*)', text)
+                        #text = re.sub(r'(\$[(].*[)])', r'{ansi[blue]}\1{ansi[normal]}'.format(ansi=ansi), text)
+                        text = parse_brackets(text)
+
+                        if var:
+                            line += '{ansi[blue]}{d[var]}{ansi[normal]}{d[text]}'.format(d=var.groupdict(), ansi=ansi)
+                        elif target:
+                            line += '{ansi[red]}{d[target]}{ansi[normal]}{d[text]}'.format(d=target.groupdict(), ansi=ansi)
+                        else:
+                            line += '{ansi[black]}{0}{ansi[normal]}'.format(text, ansi=ansi)
+
+                    if comment:
+                        line += '{ansi[green]}{0}{ansi[normal]}'.format(comment, ansi=ansi)
                 print line
     except IOError, err:
-        close(err)
+        exit(err)
 
 
 def soft_link(source, target):
@@ -178,7 +224,7 @@ def soft_link(source, target):
     try:
         if os.path.exists(target) and not os.path.islink(target):
             message = 'Setup will not over-write regular files that are not soft-linked.'
-            close('Error linking:\n{0} to {1}\n\n{2}'.format(source, target, message))
+            exit('Error linking:\n{0} to {1}\n\n{2}'.format(source, target, message))
 
         if os.path.exists(source):
             if os.path.exists(target):
@@ -186,9 +232,9 @@ def soft_link(source, target):
             os.symlink(source, target)
         else:
             message = 'Target file does not exist and therefore cannot be linked.'
-            close('Error linking:\n{0} to {1}\n\n{2}'.format(source, target, message))
+            exit('Error linking:\n{0} to {1}\n\n{2}'.format(source, target, message))
     except OSError, e:
-        close('Error linking:\n{0} to {1}\n\n{2}.'.format(source, target, e.strerror))
+        exit('Error linking:\n{0} to {1}\n\n{2}.'.format(source, target, e.strerror))
 
 
 def dialog_release(release):
@@ -216,7 +262,7 @@ def dialog_release(release):
     elif code == dialog.CANCEL:
         return '3'
     elif code == dialog.ESC:
-        close('Escape key pressed. Exiting.')
+        exit('Escape key pressed. Exiting.')
 
 
 # ------------------------------------------------------------------------------
@@ -243,7 +289,7 @@ def dialog_override(override_source):
     elif code == dialog.CANCEL:
         return False
     elif code == dialog.ESC:
-        close('User aborted setup.')
+        exit('User aborted setup.')
 
 
 def dialog_repo(choices):
@@ -267,10 +313,10 @@ def dialog_repo(choices):
                           .format(tag))
 
         elif code == dialog.CANCEL:
-            close('User aborted setup.')
+            exit('User aborted setup.')
 
         elif code == dialog.ESC:
-            close('User aborted setup.')
+            exit('User aborted setup.')
 
         else:
             # 'tag' is the chosen tag
@@ -300,7 +346,7 @@ def dialog_ssh_access(default=False):
     elif code == dialog.CANCEL:
         return False
     elif code == dialog.ESC:
-        close('Escape key pressed. Exiting.')
+        exit('Escape key pressed. Exiting.')
 
 
 def dialog_template_only(default=False):
@@ -325,7 +371,7 @@ def dialog_template_only(default=False):
     elif code == dialog.CANCEL:
         return False
     elif code == dialog.ESC:
-        close('Escape key pressed. Exiting.')
+        exit('Escape key pressed. Exiting.')
 
 
 def dialog_dists(choices, helper):
@@ -388,14 +434,14 @@ def dialog_verify_keys(config, force=False):
             })
 
             if code != dialog.OK:
-                close('User aborted setup: Exiting setup since keys can not be installed')
+                exit('User aborted setup: Exiting setup since keys can not be installed')
 
             # Receive key from keyserver
             else:
                 try:
                     text = sh.gpg('--keyserver', 'pgp.mit.edu', '--recv-keys', key)
                 except sh.ErrorReturnCode, err:
-                    close('Unable to receive keys from keyserver.  Try again later or install them manually')
+                    exit('Unable to receive keys from keyserver.  Try again later or install them manually')
 
         # Verify key on every run
         result = self.gpg_verify_key(key)
@@ -404,13 +450,13 @@ def dialog_verify_keys(config, force=False):
                 'title':  '{key[owner]} fingerprint failed!'.format(key=config.keys[key]),
                 'text': '\nWrong fingerprint\n{key[fingerprint]}\n\nExiting!'.format(key=config.keys[key]),
             }
-            close(info)
+            exit(info)
 
     # Add developers keys
     try:
         sh.gpg('--import', 'qubes-developers-keys.asc')
     except sh.ErrorReturnCode, err:
-        close('Unable to import Qubes developer keys (qubes-developers-keys.asc). Please install them manually.\n{0}'.format(err))
+        exit('Unable to import Qubes developer keys (qubes-developers-keys.asc). Please install them manually.\n{0}'.format(err))
 
     return True
 
@@ -427,7 +473,7 @@ def dialog_verify_keys(**info):
     if dialog.yesno(**_info) == dialog.OK:
         return True
 
-    close('User aborted setup: Exiting setup since keys can not be installed')
+    exit('User aborted setup: Exiting setup since keys can not be installed')
     return False
 
 
@@ -441,15 +487,17 @@ class Setup(object):
         self.config.load()
 
     def __call__(self):
+        ## Copy example-configs/template.conf to builder.conf if
+        ## the configuration file does not yet exist
+        self.create_builder_conf(force=False)
+
         ## Check / Install Keys
         ## set force value to 'force' to force re-download and verify
-        #force = True
-        #self.verify_keys(force)
+        self.verify_keys(force=False)
 
         ## Choose release version
         ## Soft link 'examples/templates.conf' to 'builder.conf'
-        force = True
-        self.config.release = self.set_release(force)
+        self.config.release = self.set_release(force=True)
 
         ## Parse the existing makefiles to obtain values needed for setup to provide
         ## required options to build new configuration file
@@ -457,9 +505,6 @@ class Setup(object):
 
         ## Prompt for selection of base repo to use for build
         self.config.git_prefix = self.set_repo()
-
-        ## TODO:
-        ## Choose BUILDER_PLUGINS
 
         ## Choose if user has git ssh (commit) or http access to private repos
         if os.path.exists(self.config.conf_override):
@@ -469,10 +514,10 @@ class Setup(object):
         self.config.template_only = dialog_template_only(self.config.template_only)
 
         ## Select which templates to build (DISTS_VM)
-        self.config.selected_dists_vm = self.set_dists()
+        self.config.dists_vm_selected = self.set_dists()
 
-        ## Write builder-release.conf
-        self.config.write_release_configuration()
+        ## TODO: Prompt after DISTS_VM selected to prompt for BUILDER-debian, etc
+        ## Choose BUILDER_PLUGINS
 
         ## Write setup.conf
         self.config.write_configuration()
@@ -515,60 +560,76 @@ class Setup(object):
                     info['text'] = u'{key[owner]} key does not exist.\n\nSelect "Yes" to add or "No" to exit'.format(key=self.config.keys[key])
 
                 if not dialog_verify_keys(**info):
-                    close('User aborted setup: Exiting setup since keys can not be installed')
+                    exit('User aborted setup: Exiting setup since keys can not be installed')
 
                 # Receive key from keyserver
                 else:
                     try:
                         text = sh.gpg('--keyserver', 'pgp.mit.edu', '--recv-keys', key)
                     except sh.ErrorReturnCode, err:
-                        close('Unable to receive keys from keyserver.  Try again later or install them manually')
+                        exit('Unable to receive keys from keyserver.  Try again later or install them manually')
 
             # Verify key on every run
             result = self.gpg_verify_key(key)
             if not result:
-                close({'title':  '{key[owner]} fingerprint failed!'.format(key=self.config.keys[key]),
+                exit({'title':  '{key[owner]} fingerprint failed!'.format(key=self.config.keys[key]),
                        'text': '\nWrong fingerprint\n{key[fingerprint]}\n\nExiting!'.format(key=self.config.keys[key]),})
 
         # Add developers keys
         try:
             sh.gpg('--import', 'qubes-developers-keys.asc')
         except sh.ErrorReturnCode, err:
-            close('Unable to import Qubes developer keys (qubes-developers-keys.asc). Please install them manually.\n{0}'.format(err))
+            exit('Unable to import Qubes developer keys (qubes-developers-keys.asc). Please install them manually.\n{0}'.format(err))
 
         return True
+
+    def create_builder_conf(self, force=False):
+        '''Copies example-configs/template.conf to builder.conf
+        '''
+        if not os.path.exists(self.config.conf_builder) or force:
+            try:
+                if os.path.exists(self.config.conf_builder) and force:
+                    os.remove(self.config.conf_builder)
+
+                shutil.copy2(self.config.conf_template, self.config.conf_builder)
+
+                # ABOUT
+                replace = ReplaceInplace(self.config.conf_builder)
+                replace.add(**{
+                    'replace': r'@echo "templates.conf"',
+                    'text': r'@echo "builder.conf"',
+                    })
+                replace.start()
+            except IOError, err:
+                exit(err)
+
+        return self.config.conf_builder
 
     def set_release(self, force=False):
         '''Select release version of Qubes to build.
         '''
-        release_original = None
-        if os.path.exists(self.config.conf_builder):
-            try:
-                release_original = sh.make('-C', self.config.dir_builder, '-B', 'release', '--quiet').strip()
-            except sh.ErrorReturnCode, err:
-                print err
-                pass
+        try:
+            release = sh.make('-C', self.config.dir_builder, '-B', 'release', '--quiet').strip()
+        except sh.ErrorReturnCode, err:
+            print err
+            pass
 
-        release_selected = dialog_release(release_original or '3')
-
-        if release_original != release_selected:
-            soft_link(self.config.conf_template, self.config.conf_builder)
-
-        return release_selected
+        return dialog_release(release or '3')
 
     def set_repo(self):
         '''Set repo prefix.
         '''
-        default_set = False
         choices = []
+        default_set = False
+        full_prefix = '{0}/{1}'.format(self.config.git_baseurl, self.config.git_prefix)
 
         for index, repo in self.config.repos.items():
-            toggle = self.config.git_prefix == repo['prefix']
+            toggle = full_prefix.endswith(repo['prefix'])
             if toggle:
                 default_set = True
             choices.append( (repo['prefix'], repo['description'], toggle) )
 
-        choices.insert(0, (self.config.default_prefix, 'Stable - Default Repo', not default_set) )
+        choices.insert(0, (self.config.git_prefix_default, 'Stable - Default Repo', not default_set) )
 
         return dialog_repo(choices)
 
@@ -586,8 +647,13 @@ class Setup(object):
             if '/' in self.config.git_prefix:
                 repo, prefix = self.config.git_prefix.split('/')
                 self.config.git_prefix = prefix
-                baseurl = re.match(r'^(.*//|.*@)(.*)', self.config.git_baseurl)
-                self.config.git_baseurl = 'git@{0}:{1}'.format(baseurl.group(2), repo)
+
+        # Re-write baseurl depending on ssh_access mode
+        baseurl = re.match(r'^(.*//|.*@)(.*(?=[:])|.*)([:].*|)', self.config.git_baseurl)
+        if ssh_access:
+            self.config.git_baseurl = 'git@{0}:{1}'.format(baseurl.group(2), repo)
+        else:
+            self.config.git_baseurl = 'https://{0}'.format(baseurl.group(2))
 
         return ssh_access
 
@@ -595,7 +661,7 @@ class Setup(object):
         ''''''
         choices = []
         helper = {}
-        for dist in self.config.all_dists_vm:
+        for dist in self.config.dists_vm_all:
             alias = self.config.template_aliases.get(dist, '')
             aliasr = self.config.template_aliases_reversed.get(dist, '')
             label = self.config.template_labels.get(alias or dist, '')
@@ -613,7 +679,7 @@ class Setup(object):
             if help:
                 help = 'Alias value: {0}'.format(help)
 
-            choices.append( (tag, item, dist in self.config.selected_dists_vm, help) )
+            choices.append( (tag, item, dist in self.config.dists_vm_selected, help) )
 
         return dialog_dists(choices, helper)
 
@@ -623,22 +689,21 @@ class Config(object):
     MARKER = object()
 
     _makefile_vars = {
+        'about':                     '',
         'release':                   0 ,
-        'override_source':           '',
-        'default_prefix':            '',
         'ssh_access':                0 ,
         'template_only':             0 ,
+        'override_source':           '',
         'git_baseurl':               '',
         'git_prefix':                '',
-        'default_prefix':            '',
-        'all_dists_vm':              [],
-        'selected_dist_dom0':        '',
-        'selected_dists_vm':         [],
+        'git_prefix_default':        '',
+        'dist_dom0_selected':        '',
+        'dists_vm_all':              [],
+        'dists_vm_selected':         [],
         'template_aliases':          [],
         'template_aliases_reversed': [],
         'template_labels':           [],
         'template_labels_reversed':  [],
-        'about':                     '',
         }
 
     def __init__(self, filename, **options):
@@ -656,10 +721,7 @@ class Config(object):
         self.dir_builder = self.options.get('dir_builder', os.path.abspath(os.path.curdir))
         self.dir_configurations = os.path.join(self.dir_builder, 'example-configs')
         self.conf_template = os.path.join(self.dir_configurations, 'templates.conf')
-        self.conf_file = os.path.join(self.dir_builder, 'setup.conf')
-        self.conf_file_old = os.path.join(self.dir_builder, 'setup.conf.old')
         self.conf_override = os.path.join(self.dir_builder, 'override.conf')
-        self.conf_release = os.path.join(self.dir_builder, 'builder-release.conf')
         self.conf_builder = os.path.join(self.dir_builder, 'builder.conf')
 
     def _init_makefile_vars(self):
@@ -685,7 +747,7 @@ class Config(object):
                         if isinstance(value, types.StringTypes):
                             value = value.strip().split()
                 except ValueError, err:
-                    #close('Invalid Makefile value: {0}={1}:\n\n{2}'.format(name, value, err))
+                    #exit('Invalid Makefile value: {0}={1}:\n\n{2}'.format(name, value, err))
                     value = default
             self.parser.set('makefile', name, value)
         return super(Config, self).__setattr__(name, value)
@@ -786,20 +848,12 @@ class Config(object):
             self.git_prefix = make().strip()
 
             env['GET_VAR'] = 'DISTS_VM'
-            self.selected_dists_vm = make().strip().split()
+            self.dists_vm_selected = make().strip().split()
         except sh.ErrorReturnCode, err:
-            close('Error parsing Makefile): {0}'.format(err))
+            exit('Error parsing Makefile): {0}'.format(err))
 
-        # Remove GIT_PREFIX from builder-release.conf so default prefix can be
-        # determined
-        if os.path.exists(self.conf_release):
-            sh.sed('-i', 's/GIT_PREFIX/#GIT_PREFIX/', self.conf_release)
         env['GET_VAR'] = 'GIT_PREFIX'
-        self.default_prefix= make().strip()
-
-        # Move setup.conf out of the way if it exists
-        if os.path.exists(self.conf_file):
-            shutil.move(self.conf_file, self.conf_file_old)
+        self.git_prefix_default= make().strip()
 
         # Set up any branch specific override configurations
         self.overrides()
@@ -810,11 +864,11 @@ class Config(object):
         # ABOUT=($(make -B about))
         try:
             env['GET_VAR'] = 'DIST_DOM0'
-            self.selected_dist_dom0 = make().strip().split()
+            self.dist_dom0_selected = make().strip().split()
 
             env['SETUP_MODE'] = '1'
             env['GET_VAR'] = 'DISTS_VM'
-            self.all_dists_vm = make().strip().split()
+            self.dists_vm_all = make().strip().split()
 
             env['GET_VAR'] = 'TEMPLATE_ALIAS'
             aliases = make().strip().split()
@@ -830,42 +884,17 @@ class Config(object):
         except sh.ErrorReturnCode, err:
             pass
 
-    def write_release_configuration(self):
-        '''Write release version to configuration file to builder-release.conf.
-        '''
-        text = '''\
-            RELEASE := {self[release]}
-            GIT_PREFIX := {self[git_prefix]}
-
-            .PHONY: about
-            about::
-            	@echo "builder-release.conf"
-            '''.format(self=vars(self))
-
-        write_file(self.conf_release, text)
-        dialog_infobox(text)
-
     def write_configuration(self):
         '''Write setup configuration file to setup.conf.
         '''
+        replace = ReplaceInplace(self.conf_builder)
         dists_vm = ''
-        indent = '            '
+        text = ''
 
-        # Format DISTS_VM
-        for dist in self.selected_dists_vm:
-            dists_vm += 'DISTS_VM += {0}\n{1}'.format(dist, indent)
-        dists_vm = dists_vm.strip()
-
+        ### -- INFO -----------------------------------------------------------
         # Format about
-        about = ' '.join(self.about.split())
-
-        text = '''\
-            #
-            # Enabled DISTS_VMs
-            #
-            DISTS_VM :=
-            {dists_vm}
-
+        info = '''\
+            ################################################################################
             #
             # Qubes Release: {self[release]}
             # Source Prefix: {self[git_prefix]} (repo)
@@ -873,53 +902,88 @@ class Config(object):
             # Master Configuration File(s):
             # setup.conf {about}
             #
-            # builder.conf linked to:
+            # builder.conf copied from:
             # {self[conf_template]}
             #
-            '''.format(about=about, dists_vm=dists_vm, self=vars(self))
+            ################################################################################
+            '''.format(about=' '.join(self.about.split()), self=vars(self))
 
-        ssh_access = '''
-            #
-            # SSH mode enabled.  Converted `GIT_BASEURL` and `GIT_PREFIX`
-            # to use `ssh` mode instead of `https`
-            #
-            SSH_ACCESS := {self[ssh_access]}
-            GIT_BASEURL := {self[git_baseurl]}
-            GIT_PREFIX := {self[git_prefix]}
-            '''.format(self=vars(self))
-        if self.ssh_access:
-            text += ssh_access
+        ### -- DISTS_VM -------------------------------------------------------
+        for dist in self.dists_vm_selected:
+            dists_vm += 'DISTS_VM += {0}\n{1}'.format(dist, '              ')
+        dists_vm = dists_vm.strip()
 
-        override = '''
-            #
-            # Override configuration file to be included:
-            #
-            -include {self[conf_override]}
-            '''.format(self=vars(self))
+        dists = '''\
+            ifneq "$(SETUP_MODE)" "1"
+
+              # Enabled DISTS_VMs
+              DISTS_VM :=
+              {dists_vm}
+
+            endif
+            '''.format(dists_vm=dists_vm, self=vars(self))
+
+        # INFO
+        replace.add(**{
+            'insert_after': r'.*[[]=setup insert start 01=[]]',
+            'insert_until': r'.*[[]=setup insert stop 01=[]]',
+            'text': dedent(info).rstrip('\n'),
+            })
+
+        # DISTS_VM
+        replace.add(**{
+            'insert_after': r'.*[[]=setup insert start 05=[]]',
+            'insert_until': r'.*[[]=setup insert stop 05=[]]',
+            'text': dedent(dists).rstrip('\n'),
+            })
+
+        # RELEASE
+        replace.add(**{
+            'replace': r'RELEASE[ ]*[?:]?=[ ]*[\d]',
+            'text': r'RELEASE := {0}'.format(self.release),
+            })
+
+        # SSH_ACCESS
+        replace.add(**{
+            'replace': r'SSH_ACCESS[ ]*[?:]?=[ ]*[\d]',
+            'text': r'SSH_ACCESS := {0}'.format(self.ssh_access),
+            })
+
+        # GIT_BASEURL
+        replace.add(**{
+            'replace': r'GIT_BASEURL[ ]*[?:]?=[ ]*.*',
+            'text': r'GIT_BASEURL := {0}'.format(self.git_baseurl),
+            })
+
+        # GIT_PREFIX
+        replace.add(**{
+            'replace': r'GIT_PREFIX[ ]*[?:]?=[ ]*.*',
+            'text': r'GIT_PREFIX := {0}'.format(self.git_prefix),
+            })
+
+        # TEMPLATE_ONLY
+        replace.add(**{
+            'replace': r'TEMPLATE_ONLY[ ]*[?:]?=[ ]*.*',
+            'text': r'TEMPLATE_ONLY ?= {0}'.format(self.template_only),
+            })
+
+        # OVERRIDE
         if self.override_source:
-            text += override
+            override = r'-include override.conf'
+        else:
+            override = r'-include override.conf'
 
-        template_only = '''
-            #
-            # Only build templates (comment out to build all of Qubes).
-            #
-            TEMPLATE_ONLY ?= {self[template_only]}
-            '''.format(self=vars(self))
-        if self.template_only:
-            text += template_only
+        replace.add(**{
+            'replace': r'.*-include[ ]+override.conf',
+            'text': r'{0}'.format(override),
+            })
 
-        about = '''
-            .PHONY: about
-            about::
-            	@echo "setup.conf"
-            '''
-        text += about
-
-        write_file(self.conf_file, text)
-        display_configuration(self.conf_file)
+        # Start the search and replace process on the configuration file
+        replace.start()
 
         ansi =  ANSIColor()
-        info = '\nNew configuration file written to: {0}\n'.format(self.conf_file)
+        display_configuration(self.conf_builder)
+        info = '\nNew configuration file written to: {0}\n'.format(self.conf_builder)
 
         install_qubes = '''
             Complete Qubes Build Steps
@@ -944,6 +1008,75 @@ class Config(object):
         print '{ansi[green]}{0}{ansi[normal]}'.format(info, ansi=ansi)
 
 
+class ReplaceInplace(object):
+    def __init__(self, filename):
+        self.filename = filename
+        self.rules = {}
+
+    defaults =  {
+        # key to use to match line
+        'match_key': None,
+
+        # text will be inserted below pattern matched line. Keeps pattern.
+        'insert_after': None,
+
+        # all text before this line will be removed.  Keeps pattern
+        # if value is `None`, stop insert mode after initial insert
+        'insert_until': None,
+
+        'replace': None,
+
+        'text': None,
+        'find': None,
+        'start_line': None,
+        'stop_line': None,
+        }
+
+    def add(self, **kwargs):
+        import copy
+        default = copy.deepcopy(self.defaults)
+        default.update(kwargs)
+
+        if default['insert_after']:
+            default['insert_after'] = re.compile(r'{0}'.format(default['insert_after']))
+            default['match_key'] = 'insert_after'
+
+            if default['insert_until']:
+                default['insert_until'] = re.compile(r'{0}'.format(default['insert_until']))
+
+        elif default['replace']:
+            default['replace'] = re.compile(r'{0}'.format(default['replace']))
+            default['match_key'] = 'replace'
+
+        match_key = default[default['match_key']]
+        self.rules[match_key] = default
+
+    def start(self):
+        import fileinput
+        insert_mode = False
+        stop = []
+
+        for line in fileinput.input(self.filename, inplace=True, backup='.bak'):
+            line =  line.rstrip('\n')
+            for rule in self.rules:
+                if rule.search(line):
+                    if self.rules[rule]['match_key'] == 'insert_after':
+                        insert_mode = True
+                        stop.append(self.rules[rule]['insert_until'])
+                        print line
+                        print self.rules[rule]['text']
+                    elif self.rules[rule]['match_key'] == 'replace':
+                        line = rule.sub(self.rules[rule]['text'], line)
+
+            for rule in stop:
+                if re.match(rule, line):
+                    stop.remove(rule)
+                    insert_mode = False
+
+            if not insert_mode:
+                print line
+
+
 def main(argv):
     parser = argparse.ArgumentParser()
     #subparsers = parser.add_subparsers(dest='subparser', help='commands')
@@ -961,7 +1094,7 @@ def main(argv):
 
     setup = Setup(**args)
     setup()
-    close()
+    #exit()
 
 
 if __name__ == '__main__':
