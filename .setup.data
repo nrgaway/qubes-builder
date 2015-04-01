@@ -19,22 +19,54 @@ fingerprint : E0E3 2283 FDCA C1A5 1007  8F27 1BB9 B1FB 5A4C 6DAD
 verify      : fpr:::::::::E0E32283FDCAC1A510078F271BB9B1FB5A4C6DAD:
 url         :
 
-[REPO-0]
-repo        : 0
+[repo-0]
 description : Unstable - Bleeding Edge Development
 prefix      : marmarek/qubes-
 
-[REPO-1]
-repo        : 1
+[repo-1]
 description : Unstable - The Big Boss Repo
 prefix      : joanna/qubes-
 
-[REPO-2]
-repo        : 2
+[repo-2]
 description : Unstable - Awesome Developer Repo
 prefix      : wojo/qubes-
 
-[REPO-3]
-repo        : 3
+[repo-3]
 description : Unstable - Nrgaway's Personal Repo
 prefix      : nrgaway/qubes-
+
+[builder-fedora]
+id          : builder-fedora
+description : Fedora Builder - Contains all Makefiles to build Fefora based templates
+require     : None
+require_in  : fc
+
+[builder-debian]
+id          : builder-debian
+description : Debian Builder - Contains all Makefiles to build Debian based templates
+require     : None
+require_in  : wheezy jessie whonix trusty utopic vivid
+
+[builder-archlinux]
+id          : builder-archlinux
+description : Archlinux Builder - Contains all Makefiles to build Archlinux based templates
+require     : None
+require_in  : archlinux
+
+[builder-whonix]
+id          : builder-whonix
+description : Whonix Builder - Template flavor to build Whonix Gateway and Workstation
+require     : builder-debian
+require_in  : whonix
+
+# require is a dependancy to use
+# require_in forces the named component to be required (not optional)
+# optional: lists dists compatible options
+# If 'development' is 'True' it will not be shown unless setup is started with --development
+[builder-salt]
+id          : builder-salt
+description : Salt Configuration Flavor - Adds Qubes management and configuration files
+optional    : fc wheezy jessie trusty utopic vivid
+require     : None
+require_in  : None
+development : True
