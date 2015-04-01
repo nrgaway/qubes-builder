@@ -459,7 +459,8 @@ class Config(object):
         }
 
     _defaults_builder = {
-        'id'     : '',
+        'id'          : '',
+	'type'        : '',
         'description' : '',
         'optional'    : [],
         'require'     : [],
@@ -469,6 +470,7 @@ class Config(object):
 
     _defaults_key = {
         'id'          : '',
+	'type'        : '',
         'key'         : '',
         'owner'       : '',
         'fingerprint' : None,
@@ -477,6 +479,7 @@ class Config(object):
         }
 
     _defaults_repo = {
+	'type'        : '',
         'description' : '',
         'prefix'      : '',
         }
@@ -611,16 +614,17 @@ class Config(object):
             section = self._get_section(section_name)
             if not section:
                 continue
-            if 'fingerprint' in section:
+            section_type = section.get('type')
+	    if section_type == 'gpg':
                 config = copy.deepcopy(self._defaults_key)
                 section['id'] = section_name
                 config.update(section)
                 self.keys[section_name] = config
-            elif section_name.startswith('repo'):
+	    elif section_type == 'repo':
                 config = copy.deepcopy(self._defaults_repo)
                 config.update(section)
                 self.repos[section_name] = config
-            elif section_name.startswith('builder'):
+	    elif section_type == 'builder':
                 config = copy.deepcopy(self._defaults_builder)
                 config.update(section)
                 self.builders[section_name] = self._coerce_values(self._defaults_builder, config)
@@ -1161,8 +1165,8 @@ class Wizard(Config):
         def _requires():
             requires = {}
             for builder_name in self.builders_selected:
-                builder = self.builders[builder_name]
-                for plugin in builder['require']:
+                builder = self.builders.get(builder_name, {})
+		for plugin in builder.get('require', []):
                     if plugin not in self.builders_selected:
                         requires.setdefault(builder_name, [])
                         requires[builder_name].append(plugin)
