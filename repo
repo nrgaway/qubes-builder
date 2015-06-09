@@ -352,30 +352,12 @@ def _report(path, makefile, **kwargs):
         if kwargs.get(keyword, None):
             options.append('--{0}={1}'.format(keyword, kwargs[keyword]))
 
-    track_list = makefile.get_var('REPO_TRACK').split()
-    if not track_list:
-        print 'REPO_TRACK not found in configuration files'
-        return
-
     ansi = ANSIColor()
     git = sh.git.bake(_cwd=path)
     mode = kwargs.get('mode', 'details')
     header = kwargs.get('header', False)
     since = ''
     until = ''
-
-    # Create a list of repos paths to track
-    repo_paths = {}
-    for track_item in track_list:
-        track_path, branch, remote, remote_branch = track_item.split(':')
-        track_path = os.path.abspath(os.path.join(makefile.src_dir, track_path))
-
-        # Over-write existing entries
-        repo_paths[track_path] = True
-
-    if path not in repo_paths and header:
-        #print '{ansi[bold]}{ansi[red]}Not Tracking: {0}{ansi[normal]}'.format(path, ansi=ansi)
-        return
 
     # Current branch
     branch = git('rev-parse', '--abbrev-ref', 'HEAD').stdout.strip()
