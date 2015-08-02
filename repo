@@ -380,7 +380,8 @@ def _report(path, makefile, **kwargs):
     if mode == 'details':
         format = '--format={0}%ad (%Cblue%cd%Creset) %G? %Cgreen%h%Creset %<(60,trunc)%s'.format(indent)
     else:
-        format = '--format={0}{1}%Cgreen%H%Creset'.format(indent, origin_commit)
+        #format = '--format={0}{1}%Cgreen%H%Creset'.format(indent, origin_commit)
+        format = '--format={0}{1}%Cgreen%h%Creset %<(70,trunc)%s'.format(indent, origin_commit)
 
     options = ['--no-pager',
                'log',
@@ -418,9 +419,9 @@ def _report(path, makefile, **kwargs):
 
 
 def report(path, makefile, **kwargs):
-    kwargs['mode'] = 'details'
-    kwargs['header'] = True
-    _report(path, makefile, **kwargs)
+    #kwargs['mode'] = 'details'
+    #kwargs['header'] = True
+    #_report(path, makefile, **kwargs)
 
     kwargs['mode'] = 'commit_url'
     kwargs['header'] = False
